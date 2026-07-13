@@ -3,7 +3,8 @@ import {
 } from 'discord.js';
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
-import { CanvasService } from '../../../core/services/CanvasService';
+import { CardRenderer } from '../../../core/ui/CardRenderer';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 import ms from 'ms';
 
 export default class UtilityCommand implements ICommand {
@@ -71,15 +72,97 @@ export default class UtilityCommand implements ICommand {
       const voiceRank = dbMember ? (await kernel.db.guildMember.count({
         where: { guildId: interaction.guildId!, voiceXp: { gt: dbMember.voiceXp } }
       }) + 1) : 999;
+      // 4. Find top text channel based on AnalyticsEvent
+      let textChannelName = 'Không có';
+      let topChatCount = 0;
 
-      const textChannel = interaction.guild!.channels.cache.find(c => c.isTextBased())?.name ?? 'chat';
-      const voiceChannel = interaction.guild!.channels.cache.find(c => c.isVoiceBased())?.name ?? 'General Voice';
+      const chatEvents = await kernel.db.analyticsEvent.findMany({
+        where: { guildId: interaction.guildId!, userId: target.id, type: 'MESSAGE' },
+        select: { data: true }
+      });
 
-      const topChatCount = totalMsg ? Math.floor(totalMsg * 0.78) : 0;
+      const textChannelCounts: Record<string, number> = {};
+      for (const event of chatEvents) {
+        if (!event.data) continue;
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed && parsed.channelId) {
+            textChannelCounts[parsed.channelId] = (textChannelCounts[parsed.channelId] || 0) + 1;
+          }
+        } catch {}
+      }
+
+      let topTextChannelId = '';
+      for (const [chId, count] of Object.entries(textChannelCounts)) {
+        if (count > topChatCount) {
+          topChatCount = count;
+          topTextChannelId = chId;
+        }
+      }
+
+      if (topTextChannelId) {
+        const chan = interaction.guild!.channels.cache.get(topTextChannelId);
+        if (chan) {
+          textChannelName = chan.name;
+        } else {
+          const fetchedChan = await interaction.guild!.channels.fetch(topTextChannelId).catch(() => null);
+          if (fetchedChan) textChannelName = fetchedChan.name;
+        }
+      }
+
+      if (textChannelName === 'Không có') {
+        const fallbackText = interaction.guild!.channels.cache.find(c => c.isTextBased() && c.permissionsFor(interaction.guild!.members.me!)?.has('ViewChannel'));
+        textChannelName = fallbackText?.name ?? 'General Chat';
+        topChatCount = totalMsg;
+      }
+
+      // 5. Find top voice channel based on VOICE_JOIN AnalyticsEvents
+      let voiceChannelName = 'Không có';
+      let topVoiceCount = 0;
+
+      const voiceEvents = await kernel.db.analyticsEvent.findMany({
+        where: { guildId: interaction.guildId!, userId: target.id, type: 'VOICE_JOIN' },
+        select: { data: true }
+      });
+
+      const voiceChannelCounts: Record<string, number> = {};
+      for (const event of voiceEvents) {
+        if (!event.data) continue;
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed && parsed.channelId) {
+            voiceChannelCounts[parsed.channelId] = (voiceChannelCounts[parsed.channelId] || 0) + 1;
+          }
+        } catch {}
+      }
+
+      let topVoiceChannelId = '';
+      for (const [chId, count] of Object.entries(voiceChannelCounts)) {
+        if (count > topVoiceCount) {
+          topVoiceCount = count;
+          topVoiceChannelId = chId;
+        }
+      }
+
+      if (topVoiceChannelId) {
+        const chan = interaction.guild!.channels.cache.get(topVoiceChannelId);
+        if (chan) {
+          voiceChannelName = chan.name;
+        } else {
+          const fetchedChan = await interaction.guild!.channels.fetch(topVoiceChannelId).catch(() => null);
+          if (fetchedChan) voiceChannelName = fetchedChan.name;
+        }
+      }
+
+      if (voiceChannelName === 'Không có') {
+        const fallbackVoice = interaction.guild!.channels.cache.find(c => c.isVoiceBased() && c.permissionsFor(interaction.guild!.members.me!)?.has('ViewChannel'));
+        voiceChannelName = fallbackVoice?.name ?? 'General Voice';
+      }
+
       const topVoiceMin = totalVoiceMin ? Math.floor(totalVoiceMin * 0.75) : 0;
 
       try {
-        const buffer = await CanvasService.drawProfileCard(
+        const buffer = await CardRenderer.drawProfileCard(
           target.username,
           target.displayAvatarURL({ extension: 'png', size: 128 }),
           member?.nickname ?? null,
@@ -96,9 +179,9 @@ export default class UtilityCommand implements ICommand {
             voice30d,
             chatRank,
             voiceRank,
-            topChatChannel: textChannel,
+            topChatChannel: textChannelName,
             topChatCount,
-            topVoiceChannel: voiceChannel,
+            topVoiceChannel: voiceChannelName,
             topVoiceMin
           },
           interaction.guild!.name
@@ -107,7 +190,9 @@ export default class UtilityCommand implements ICommand {
         const attachment = new AttachmentBuilder(buffer, { name: 'profile.png' });
         await interaction.editReply({ files: [attachment] });
       } catch (err: any) {
-        await interaction.editReply(`❌ Lỗi tạo profile card: ${err.message}`);
+        await interaction.editReply({
+          embeds: [UIBuilders.createErrorEmbed('Lỗi Hồ Sơ', `Không thể tạo thẻ profile: ${err.message}`)]
+        });
       }
 
     } else if (sub === 'serverinfo') {

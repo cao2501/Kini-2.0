@@ -3,7 +3,8 @@ import {
 } from 'discord.js';
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
-import { CanvasService } from '../../../core/services/CanvasService';
+import { CardRenderer } from '../../../core/ui/CardRenderer';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class LeaderboardCommand implements ICommand {
   data = new SlashCommandBuilder()
@@ -31,7 +32,9 @@ export default class LeaderboardCommand implements ICommand {
     });
 
     if (!members.length) {
-      return void interaction.editReply('❌ Chưa có dữ liệu bảng xếp hạng.');
+      return void interaction.editReply({
+        embeds: [UIBuilders.createErrorEmbed('Lỗi Bảng Xếp Hạng', 'Chưa có dữ liệu bảng xếp hạng.')]
+      });
     }
 
     // Resolve user data (username & avatar)
@@ -72,18 +75,18 @@ export default class LeaderboardCommand implements ICommand {
     }
 
     try {
-      const guildIcon = interaction.guild!.iconURL({ extension: 'png', size: 128 });
-      const buffer = await CanvasService.drawLeaderboardCard(
+      const buffer = await CardRenderer.drawLeaderboardCard(
         interaction.guild!.name,
         type,
         resolvedMembers,
-        callerRankData,
-        guildIcon
+        callerRankData
       );
       const attachment = new AttachmentBuilder(buffer, { name: 'leaderboard.png' });
       await interaction.editReply({ files: [attachment] });
     } catch (err: any) {
-      await interaction.editReply(`❌ Lỗi tạo bảng xếp hạng: ${err.message}`);
+      await interaction.editReply({
+        embeds: [UIBuilders.createErrorEmbed('Lỗi Tạo Bảng Xếp Hạng', err.message)]
+      });
     }
   }
 }

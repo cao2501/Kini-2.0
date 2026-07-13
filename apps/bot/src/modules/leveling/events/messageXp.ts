@@ -2,7 +2,8 @@ import { Message, EmbedBuilder, TextChannel, AttachmentBuilder } from 'discord.j
 import { IEvent } from '../../../core/interfaces/IEvent';
 import { Kernel } from '../../../core/Kernel';
 import { getModuleConfig, ensureMember } from '../../../database/helpers';
-import { CanvasService } from '../../../core/services/CanvasService';
+import { CardRenderer } from '../../../core/ui/CardRenderer';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class LevelingMessageEvent implements IEvent<'messageCreate'> {
   name = 'messageCreate' as const;
@@ -54,7 +55,7 @@ export default class LevelingMessageEvent implements IEvent<'messageCreate'> {
       if (levelUpChannel?.isTextBased()) {
         try {
           const avatarUrl = message.author.displayAvatarURL({ extension: 'png', size: 128 });
-          const buffer = await CanvasService.drawLevelUpCard(avatarUrl, member.level, newLevel);
+          const buffer = await CardRenderer.drawLevelUpCard(avatarUrl, member.level, newLevel);
           const attachment = new AttachmentBuilder(buffer, { name: 'levelup.png' });
           await (levelUpChannel as TextChannel).send({
             content: `🎉 Chúc mừng ${message.author} đã thăng cấp!`,
@@ -62,8 +63,7 @@ export default class LevelingMessageEvent implements IEvent<'messageCreate'> {
           });
         } catch {
           // Fallback to text embed
-          const embed = new EmbedBuilder()
-            .setColor(0xf1c40f)
+          const embed = UIBuilders.createEmbed()
             .setDescription(`🎉 ${message.author} đã lên **Level ${newLevel}**!`);
           await (levelUpChannel as TextChannel).send({ embeds: [embed] }).catch(() => {});
         }

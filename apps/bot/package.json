@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@discordjs/rest": "^2.4.0",
-    "@discordjs/voice": "^0.17.0",
+    "@discordjs/voice": "^0.19.2",
     "@google/generative-ai": "^0.21.0",
     "@napi-rs/canvas": "^0.1.56",
     "@prisma/client": "^5.22.0",
@@ -57,6 +57,7 @@
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "socket.io": "^4.8.1",
+    "spotify-url-info": "^3.3.1",
     "tsyringe": "^4.8.0",
     "uuid": "^10.0.0",
     "winston": "^3.15.0",

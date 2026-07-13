@@ -1,9 +1,10 @@
 import {
-  Interaction, StringSelectMenuInteraction, EmbedBuilder,
-  ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  Interaction, StringSelectMenuInteraction,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder,
 } from 'discord.js';
 import { IEvent } from '../../../core/interfaces/IEvent';
 import { Kernel } from '../../../core/Kernel';
+import { CardRenderer } from '../../../core/ui/CardRenderer';
 
 export default class ShopInteractionEvent implements IEvent<'interactionCreate'> {
   name = 'interactionCreate' as const;
@@ -22,7 +23,7 @@ export default class ShopInteractionEvent implements IEvent<'interactionCreate'>
     }
   }
 
-  // ── Show item detail embed with image ──────────────────────────────────
+  // ── Show item detail card using Canvas ─────────────────────────────────
   private async handleDetailSelect(kernel: Kernel, interaction: StringSelectMenuInteraction): Promise<void> {
     await interaction.deferReply({ ephemeral: true });
 
@@ -35,29 +36,23 @@ export default class ShopInteractionEvent implements IEvent<'interactionCreate'>
     }
 
     const stockText = item.stock !== null
-      ? (item.stock > 0 ? `📦 Còn **${item.stock}** sản phẩm` : '❌ Hết hàng')
-      : '∞ Không giới hạn';
+      ? (item.stock > 0 ? `${item.stock} sản phẩm` : 'Hết hàng')
+      : 'Vô hạn';
 
     const rewardText = item.type === 'ROLE' && item.roleId
-      ? `🎭 Vai trò <@&${item.roleId}>`
-      : '🎁 Custom — liên hệ Admin để nhận';
+      ? `Role: ${interaction.guild!.roles.cache.get(item.roleId)?.name || 'Unknown'}`
+      : 'Custom — liên hệ Admin để nhận';
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🏪 ${item.name}`)
-      .setColor(0xf39c12)
-      .setDescription(item.description ?? '*Không có mô tả*')
-      .addFields(
-        { name: '💰 Giá', value: `\`${item.price.toLocaleString()} coins\``, inline: true },
-        { name: '📦 Kho hàng', value: stockText, inline: true },
-        { name: '🎁 Phần thưởng', value: rewardText, inline: false },
-      )
-      .setFooter({ text: 'Nhấn Mua Ngay để xác nhận mua hàng' })
-      .setTimestamp();
-
-    // Show image full-size if available
-    if (item.imageUrl) {
-      embed.setImage(item.imageUrl);
-    }
+    // Draw detail card on Canvas
+    const buffer = await CardRenderer.drawShopDetailCard(
+      item.name,
+      item.price,
+      stockText,
+      rewardText,
+      item.description,
+      item.imageUrl
+    );
+    const attachment = new AttachmentBuilder(buffer, { name: 'detail.png' });
 
     // Buy button — disabled if out of stock
     const outOfStock = item.stock !== null && item.stock <= 0;
@@ -69,10 +64,10 @@ export default class ShopInteractionEvent implements IEvent<'interactionCreate'>
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buyBtn);
 
-    await interaction.editReply({ embeds: [embed], components: [row] });
+    await interaction.editReply({ files: [attachment], components: [row] });
   }
 
-  // ── Handle buy button confirm ──────────────────────────────────────────
+  // ── Handle buy button confirm using Canvas success card ────────────────
   private async handleBuyConfirm(kernel: Kernel, interaction: any): Promise<void> {
     await interaction.deferReply({ ephemeral: true });
 
@@ -98,15 +93,24 @@ export default class ShopInteractionEvent implements IEvent<'interactionCreate'>
       );
     }
 
+    const newBalance = member.balance - item.price;
+
     // Deduct balance
     await kernel.db.guildMember.update({
       where: { guildId_userId: { guildId, userId: interaction.user.id } },
       data: { balance: { decrement: item.price } },
     });
 
-    // Reduce stock
+    // Reduce stock and disable if out of stock
     if (item.stock !== null) {
-      await kernel.db.shopItem.update({ where: { id: item.id }, data: { stock: { decrement: 1 } } });
+      const nextStock = item.stock - 1;
+      await kernel.db.shopItem.update({
+        where: { id: item.id },
+        data: {
+          stock: nextStock,
+          enabled: nextStock > 0 ? item.enabled : false, // Disable if out of stock
+        },
+      });
     }
 
     // Give role
@@ -115,28 +119,40 @@ export default class ShopInteractionEvent implements IEvent<'interactionCreate'>
       await discordMember?.roles.add(item.roleId).catch(() => {});
     }
 
-    // Log purchase
-    await kernel.db.itemPurchase.create({
-      data: { itemId: item.id, guildId, userId: interaction.user.id },
+    // Log purchase / Update inventory
+    const existingPurchase = await kernel.db.itemPurchase.findFirst({
+      where: { itemId: item.id, guildId, userId: interaction.user.id }
     });
 
-    const resultEmbed = new EmbedBuilder()
-      .setColor(0x2ecc71)
-      .setTitle('✅ Mua Thành Công!')
-      .addFields(
-        { name: '🏪 Sản phẩm', value: item.name, inline: true },
-        { name: '💰 Đã trả', value: `${item.price.toLocaleString()} coins`, inline: true },
-        { name: '💵 Còn lại', value: `${(member.balance - item.price).toLocaleString()} coins`, inline: true },
-        {
-          name: '🎁 Phần thưởng',
-          value: item.type === 'ROLE' && item.roleId ? `<@&${item.roleId}>` : 'Liên hệ admin để nhận thưởng.',
-        },
-      )
-      .setTimestamp();
+    if (existingPurchase) {
+      await kernel.db.itemPurchase.update({
+        where: { id: existingPurchase.id },
+        data: { quantity: { increment: 1 } }
+      });
+    } else {
+      await kernel.db.itemPurchase.create({
+        data: { itemId: item.id, guildId, userId: interaction.user.id, quantity: 1 }
+      });
+    }
 
-    if (item.imageUrl) resultEmbed.setImage(item.imageUrl);
+    let roleName = '';
+    if (item.type === 'ROLE' && item.roleId) {
+      const role = interaction.guild!.roles.cache.get(item.roleId);
+      roleName = role ? role.name : 'Unknown Role';
+    }
 
-    await interaction.editReply({ embeds: [resultEmbed], components: [] });
+    const buffer = await CardRenderer.drawShopBuyCard(
+      interaction.user.username,
+      interaction.user.displayAvatarURL({ extension: 'png' }),
+      item.name,
+      item.price,
+      newBalance,
+      item.type === 'ROLE',
+      roleName
+    );
+    const attachment = new AttachmentBuilder(buffer, { name: 'buy_success.png' });
+
+    await interaction.editReply({ files: [attachment], components: [] });
 
     kernel.eventBus.emit('economy:transaction', {
       guildId, userId: interaction.user.id, type: 'SHOP_BUY', amount: item.price,

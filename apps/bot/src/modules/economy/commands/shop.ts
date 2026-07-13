@@ -1,10 +1,11 @@
 import {
   ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits,
-  ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
+  ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, AttachmentBuilder,
 } from 'discord.js';
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
 import { ensureGuild } from '../../../database/helpers';
+import { CardRenderer } from '../../../core/ui/CardRenderer';
 
 // Item type emoji mapping
 const TYPE_EMOJI: Record<string, string> = {
@@ -17,6 +18,7 @@ export default class ShopCommand implements ICommand {
     .setName('shop')
     .setDescription('🏪 Cửa Hàng Server')
     .addSubcommand(s => s.setName('list').setDescription('📋 Xem sản phẩm trong cửa hàng'))
+    .addSubcommand(s => s.setName('inventory').setDescription('🎒 Kho đồ cá nhân của bạn'))
     .addSubcommand(s => s.setName('buy').setDescription('💳 Mua sản phẩm — dùng /shop list để xem ID')
       .addIntegerOption(o => o.setName('id').setDescription('ID sản phẩm (số thứ tự hiển thị trong /shop list)').setRequired(true).setMinValue(1))
     )
@@ -50,31 +52,21 @@ export default class ShopCommand implements ICommand {
 
     // ─── LIST ────────────────────────────────────────────────────────────────
     if (sub === 'list') {
+      await interaction.deferReply();
       const items = await kernel.db.shopItem.findMany({
         where: { guildId, enabled: true },
         orderBy: { price: 'asc' },
       });
 
       if (!items.length) {
-        return void interaction.reply({
+        return void interaction.editReply({
           content: '🏪 Cửa hàng đang trống. Admin dùng `/shop add` để thêm sản phẩm.',
-          ephemeral: true,
         });
       }
 
-      // Compact list embed — show numeric #ID + emoji + name + price
-      const listLines = items.map((item, idx) => {
-        const emoji = TYPE_EMOJI[item.type] ?? '🛒';
-        const stock = item.stock !== null ? ` *(${item.stock} còn lại)*` : '';
-        return `\`#${idx + 1}\` ${emoji} **${item.name}** — \`${item.price.toLocaleString()} coins\`${stock}`;
-      });
-
-      const listEmbed = new EmbedBuilder()
-        .setTitle(`🏪 Cửa Hàng — ${interaction.guild!.name}`)
-        .setColor(0xf39c12)
-        .setDescription(listLines.join('\n'))
-        .setFooter({ text: `${items.length} sản phẩm • Chọn sản phẩm bên dưới để xem chi tiết` })
-        .setTimestamp();
+      // Draw custom canvas card for Shop List
+      const buffer = await CardRenderer.drawShopListCard(interaction.guild!.name, items);
+      const attachment = new AttachmentBuilder(buffer, { name: 'shop.png' });
 
       // Select menu — each item is an option, value carries index for lookup
       const selectOptions = items.slice(0, 25).map((item, idx) =>
@@ -92,7 +84,39 @@ export default class ShopCommand implements ICommand {
 
       const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
-      await interaction.reply({ embeds: [listEmbed], components: [row] });
+      await interaction.editReply({
+        content: `🏪 **Cửa Hàng — ${interaction.guild!.name}**\nChọn sản phẩm dưới thanh menu để xem chi tiết và mua!`,
+        files: [attachment],
+        components: [row]
+      });
+
+    // ─── INVENTORY ───────────────────────────────────────────────────────────
+    } else if (sub === 'inventory') {
+      await interaction.deferReply();
+      
+      const purchases = await kernel.db.itemPurchase.findMany({
+        where: { guildId, userId: interaction.user.id },
+        include: { item: true }
+      });
+
+      const mappedPurchases = purchases.map(p => ({
+        name: p.item.name,
+        quantity: p.quantity,
+        type: p.item.type,
+        description: p.item.description
+      }));
+
+      const buffer = await CardRenderer.drawInventoryCard(
+        interaction.user.username,
+        interaction.user.displayAvatarURL({ extension: 'png' }),
+        mappedPurchases
+      );
+      const attachment = new AttachmentBuilder(buffer, { name: 'inventory.png' });
+
+      await interaction.editReply({
+        content: `🎒 **Kho đồ cá nhân của** <@${interaction.user.id}>`,
+        files: [attachment]
+      });
 
     // ─── BUY ─────────────────────────────────────────────────────────────────
     } else if (sub === 'buy') {
@@ -126,37 +150,68 @@ export default class ShopCommand implements ICommand {
         );
       }
 
+      const newBalance = member.balance - item.price;
+
+      // Deduct balance
       await kernel.db.guildMember.update({
         where: { guildId_userId: { guildId, userId: interaction.user.id } },
         data: { balance: { decrement: item.price } },
       });
 
+      // Reduce stock and disable if out of stock
       if (item.stock !== null) {
-        await kernel.db.shopItem.update({ where: { id: item.id }, data: { stock: { decrement: 1 } } });
+        const nextStock = item.stock - 1;
+        await kernel.db.shopItem.update({
+          where: { id: item.id },
+          data: {
+            stock: nextStock,
+            enabled: nextStock > 0 ? item.enabled : false, // Disable if out of stock
+          },
+        });
       }
 
+      // Add to inventory (ItemPurchase)
+      const existingPurchase = await kernel.db.itemPurchase.findFirst({
+        where: { itemId: item.id, guildId, userId: interaction.user.id }
+      });
+
+      if (existingPurchase) {
+        await kernel.db.itemPurchase.update({
+          where: { id: existingPurchase.id },
+          data: { quantity: { increment: 1 } }
+        });
+      } else {
+        await kernel.db.itemPurchase.create({
+          data: {
+            itemId: item.id,
+            guildId,
+            userId: interaction.user.id,
+            quantity: 1
+          }
+        });
+      }
+
+      let roleName = '';
       if (item.type === 'ROLE' && item.roleId) {
+        const role = interaction.guild!.roles.cache.get(item.roleId);
+        roleName = role ? role.name : 'Unknown Role';
         const discordMember = interaction.guild!.members.cache.get(interaction.user.id);
         await discordMember?.roles.add(item.roleId).catch(() => {});
       }
 
-      const embed = new EmbedBuilder()
-        .setColor(0x2ecc71)
-        .setTitle('✅ Mua Thành Công!')
-        .addFields(
-          { name: '🏪 Sản phẩm', value: item.name, inline: true },
-          { name: '💰 Đã trả', value: `${item.price.toLocaleString()} coins`, inline: true },
-          { name: '💵 Còn lại', value: `${(member.balance - item.price).toLocaleString()} coins`, inline: true },
-          {
-            name: '🎁 Phần thưởng',
-            value: item.type === 'ROLE' && item.roleId ? `<@&${item.roleId}>` : 'Liên hệ admin để nhận thưởng.',
-          },
-        )
-        .setTimestamp();
+      // Draw custom canvas card for Shop Buy
+      const buffer = await CardRenderer.drawShopBuyCard(
+        interaction.user.username,
+        interaction.user.displayAvatarURL({ extension: 'png' }),
+        item.name,
+        item.price,
+        newBalance,
+        item.type === 'ROLE',
+        roleName
+      );
+      const attachment = new AttachmentBuilder(buffer, { name: 'buy_success.png' });
 
-      if (item.imageUrl) embed.setImage(item.imageUrl);
-
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({ files: [attachment] });
       kernel.eventBus.emit('economy:transaction', { guildId, userId: interaction.user.id, type: 'SHOP_BUY', amount: item.price });
 
     // ─── ADD ─────────────────────────────────────────────────────────────────

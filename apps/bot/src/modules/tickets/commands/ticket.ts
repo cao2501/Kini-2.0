@@ -13,6 +13,7 @@ import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
 import { ensureGuild } from '../../../database/helpers';
 import { TicketService } from '../services/TicketService';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class TicketCommand implements ICommand {
 	data = new SlashCommandBuilder()
@@ -132,20 +133,17 @@ export default class TicketCommand implements ICommand {
 			},
 		});
 
-		const embed = new EmbedBuilder()
-			.setTitle(name)
-			.setDescription(description)
-			.setColor(0x8a2be2) // Purple-ish theme matching reference
-			.setTimestamp();
+		const embed = UIBuilders.createEmbed(name, description);
 
 		const row = new ActionRowBuilder<ButtonBuilder>();
 		buttons.forEach((label, index) => {
 			const cleanType = label.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || `type${index}`;
 			row.addComponents(
-				new ButtonBuilder()
-					.setCustomId(`ticket:create:${panel.id}:${cleanType}`)
-					.setLabel(label)
-					.setStyle(ButtonStyle.Secondary), // Secondary matches grey buttons in reference
+				UIBuilders.createButton(
+					`ticket:create:${panel.id}:${cleanType}`,
+					label,
+					ButtonStyle.Secondary
+				)
 			);
 		});
 
@@ -193,7 +191,7 @@ export default class TicketCommand implements ICommand {
 		const target = interaction.options.getUser('user', true);
 		await kernel.db.ticket.update({ where: { id: ticket.id }, data: { claimedBy: target.id } });
 		await interaction.reply({
-			embeds: [new EmbedBuilder().setColor(0x3498db).setDescription(`✅ Ticket đã chuyển cho ${target}.`)],
+			embeds: [UIBuilders.createSuccessEmbed('Chuyển Giao Ticket', `✅ Ticket đã chuyển cho ${target}.`)],
 		});
 	}
 
@@ -202,12 +200,9 @@ export default class TicketCommand implements ICommand {
 		if (!ticket) return void interaction.reply({ content: '❌ Đây không phải kênh ticket.', ephemeral: true });
 		const priority = interaction.options.getString('level', true);
 		await kernel.db.ticket.update({ where: { id: ticket.id }, data: { priority } });
-		const colors: Record<string, number> = { LOW: 0x2ecc71, NORMAL: 0x3498db, HIGH: 0xf39c12, URGENT: 0xe74c3c };
 		await interaction.reply({
 			embeds: [
-				new EmbedBuilder()
-					.setColor(colors[priority] ?? 0x5865f2)
-					.setDescription(`✅ Đã đặt mức ưu tiên: **${priority}**`),
+				UIBuilders.createSuccessEmbed('Mức Ưu Tiên', `✅ Đã đặt mức ưu tiên: **${priority}**`)
 			],
 		});
 	}

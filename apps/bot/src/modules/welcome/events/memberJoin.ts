@@ -1,7 +1,9 @@
-import { GuildMember, EmbedBuilder } from 'discord.js';
+import { GuildMember, EmbedBuilder, AttachmentBuilder } from 'discord.js';
 import { IEvent } from '../../../core/interfaces/IEvent';
 import { Kernel } from '../../../core/Kernel';
 import { getModuleConfig, ensureGuild, ensureMember } from '../../../database/helpers';
+import { CardRenderer } from '../../../core/ui/CardRenderer';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class WelcomeJoinEvent implements IEvent<'guildMemberAdd'> {
   name = 'guildMemberAdd' as const;
@@ -24,21 +26,33 @@ export default class WelcomeJoinEvent implements IEvent<'guildMemberAdd'> {
     if (config.welcomeEnabled && config.welcomeChannelId) {
       const ch = kernel.client.channels.cache.get(config.welcomeChannelId);
       if (ch?.isTextBased()) {
-        const embed = new EmbedBuilder()
-          .setDescription(replaceVars(config.welcomeMessage ?? '👋 Chào mừng {user} đến với **{server}**!'))
-          .setColor(0x2ecc71)
-          .setThumbnail(member.user.displayAvatarURL())
-          .setTimestamp();
-        await (ch as any).send({ embeds: [embed] }).catch(() => {});
+        try {
+          const avatarUrl = member.user.displayAvatarURL({ extension: 'png', size: 256 });
+          const buffer = await CardRenderer.drawWelcomeCard(
+            avatarUrl,
+            member.user.username,
+            member.guild.name,
+            member.guild.memberCount
+          );
+          const attachment = new AttachmentBuilder(buffer, { name: 'welcome.png' });
+          await (ch as any).send({
+            content: replaceVars(config.welcomeMessage ?? '👋 Chào mừng {user} đến với **{server}**!'),
+            files: [attachment]
+          });
+        } catch {
+          // Fallback to text embed
+          const embed = UIBuilders.createEmbed()
+            .setDescription(replaceVars(config.welcomeMessage ?? '👋 Chào mừng {user} đến với **{server}**!'))
+            .setThumbnail(member.user.displayAvatarURL());
+          await (ch as any).send({ embeds: [embed] }).catch(() => {});
+        }
       }
     }
 
     // DM welcome
     if (config.dmEnabled && config.dmMessage) {
-      await member.send({ embeds: [new EmbedBuilder()
-        .setDescription(replaceVars(config.dmMessage))
-        .setColor(0x5865f2)
-      ]}).catch(() => {});
+      const embed = UIBuilders.createInfoEmbed('Chào mừng', replaceVars(config.dmMessage));
+      await member.send({ embeds: [embed] }).catch(() => {});
     }
 
     // Auto-assign verify role if configured

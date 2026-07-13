@@ -3,7 +3,8 @@ import {
 } from 'discord.js';
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
-import { CanvasService } from '../../../core/services/CanvasService';
+import { CardRenderer } from '../../../core/ui/CardRenderer';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class RankCommand implements ICommand {
   data = new SlashCommandBuilder()
@@ -20,7 +21,9 @@ export default class RankCommand implements ICommand {
     });
 
     if (!member) {
-      return void interaction.editReply(`❌ ${target.username} chưa có dữ liệu XP.`);
+      return void interaction.editReply({
+        embeds: [UIBuilders.createErrorEmbed('Lỗi Rank', `${target.username} chưa có dữ liệu XP.`)]
+      });
     }
 
     const level = Math.floor(Math.sqrt(member.xp / 100));
@@ -37,7 +40,7 @@ export default class RankCommand implements ICommand {
     const avatarUrl = target.displayAvatarURL({ extension: 'png', size: 128 });
     
     try {
-      const buffer = await CanvasService.drawRankCard(
+      const buffer = await CardRenderer.drawRankCard(
         avatarUrl,
         target.username,
         level,
@@ -48,7 +51,9 @@ export default class RankCommand implements ICommand {
       const attachment = new AttachmentBuilder(buffer, { name: 'rank.png' });
       await interaction.editReply({ files: [attachment] });
     } catch (err: any) {
-      await interaction.editReply(`❌ Lỗi tạo rank card: ${err.message}`);
+      await interaction.editReply({
+        embeds: [UIBuilders.createErrorEmbed('Lỗi Tạo Thẻ Rank', err.message)]
+      });
     }
   }
 }

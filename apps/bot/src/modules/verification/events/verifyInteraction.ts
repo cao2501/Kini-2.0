@@ -2,6 +2,7 @@ import { Interaction, GuildMember, ModalBuilder, TextInputBuilder, TextInputStyl
 import { IEvent } from '../../../core/interfaces/IEvent';
 import { Kernel } from '../../../core/Kernel';
 import { getModuleConfig } from '../../../database/helpers';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class VerifyInteractionEvent implements IEvent<'interactionCreate'> {
   name = 'interactionCreate' as const;
@@ -21,16 +22,23 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
       const member = interaction.member as GuildMember;
 
       if (config.roleId && member.roles.cache.has(config.roleId)) {
-        return void interaction.reply({ content: '✅ Bạn đã được xác minh rồi!', ephemeral: true });
+        return void interaction.reply({
+          embeds: [UIBuilders.createSuccessEmbed('Xác Minh', '✅ Bạn đã được xác minh trước đó rồi!')],
+          ephemeral: true
+        });
       }
 
       if (type === 'BUTTON') {
         // Instant verify
         if (config.roleId) await member.roles.add(config.roleId).catch(() => {});
         await kernel.db.verificationAttempt.create({
-          data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'BUTTON', verified: true, verifiedAt: new Date() },
+          data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'BUTTON', verified: true },
         }).catch(() => {});
-        await interaction.reply({ content: '✅ Xác minh thành công! Chào mừng bạn đến server.', ephemeral: true });
+        
+        await interaction.reply({
+          embeds: [UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công! Chào mừng bạn đến với server.')],
+          ephemeral: true
+        });
 
       } else if (type === 'MATH') {
         // Generate math question
@@ -60,13 +68,21 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
 
       } else if (type === 'TIME') {
         // 5-second delay
-        await interaction.reply({ content: '⏱️ Đang xác minh... Vui lòng đợi 5 giây rồi nhấn lại.', ephemeral: true });
+        await interaction.reply({
+          embeds: [UIBuilders.createInfoEmbed('Đang Xác Minh', '⏱️ Đang xác minh... Vui lòng đợi 5 giây rồi nhấn lại.')],
+          ephemeral: true
+        });
+        
         setTimeout(async () => {
           if (config.roleId) await member.roles.add(config.roleId!).catch(() => {});
           await kernel.db.verificationAttempt.create({
-            data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'TIME', verified: true, verifiedAt: new Date() },
+            data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'TIME', verified: true },
           }).catch(() => {});
-          await interaction.followUp({ content: '✅ Xác minh thành công!', ephemeral: true });
+          
+          await interaction.followUp({
+            embeds: [UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công!')],
+            ephemeral: true
+          });
         }, 5000);
       }
     }
@@ -75,12 +91,18 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
     if (interaction.isModalSubmit() && customId === 'verify:math:submit') {
       const challenge = this.mathChallenges.get(interaction.user.id);
       if (!challenge || Date.now() > challenge.expires) {
-        return void interaction.reply({ content: '❌ Captcha đã hết hạn. Thử lại.', ephemeral: true });
+        return void interaction.reply({
+          embeds: [UIBuilders.createErrorEmbed('Hết Hạn Captcha', '❌ Captcha đã hết hạn hoặc không tồn tại. Vui lòng bấm xác minh lại.')],
+          ephemeral: true
+        });
       }
 
       const answer = parseInt(interaction.fields.getTextInputValue('verify:math:answer'));
       if (isNaN(answer) || answer !== challenge.answer) {
-        return void interaction.reply({ content: `❌ Sai đáp án! Đáp án đúng: \`${challenge.answer}\``, ephemeral: true });
+        return void interaction.reply({
+          embeds: [UIBuilders.createErrorEmbed('Sai Đáp Án', `❌ Sai đáp án! Hãy thử lại một câu đố khác.`)],
+          ephemeral: true
+        });
       }
 
       this.mathChallenges.delete(interaction.user.id);
@@ -89,10 +111,13 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
 
       if (config.roleId) await member.roles.add(config.roleId).catch(() => {});
       await kernel.db.verificationAttempt.create({
-        data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'MATH', verified: true, verifiedAt: new Date() },
+        data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'MATH', verified: true },
       }).catch(() => {});
 
-      await interaction.reply({ content: '✅ Xác minh thành công! Chào mừng bạn đến server.', ephemeral: true });
+      await interaction.reply({
+        embeds: [UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công! Chào mừng bạn đến với server.')],
+        ephemeral: true
+      });
     }
   }
 }
