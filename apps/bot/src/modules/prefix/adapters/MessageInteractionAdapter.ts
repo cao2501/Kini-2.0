@@ -16,6 +16,7 @@ export class MessageInteractionAdapter {
   // ── Discord-compatible properties ──────────────────────────────────────────
   public readonly guildId: string;
   public readonly guild: Guild;
+  public readonly channel: import('discord.js').TextBasedChannel;
   public readonly user: { id: string; username: string; tag: string; displayAvatarURL: () => string };
   public readonly channelId: string;
   public readonly member: GuildMember | APIInteractionGuildMember | null;
@@ -38,6 +39,7 @@ export class MessageInteractionAdapter {
 
     this.guildId = message.guildId!;
     this.guild = message.guild!;
+    this.channel = message.channel;
     this.channelId = message.channelId;
     this.member = message.member;
     this.memberPermissions = message.member?.permissions ?? null;
