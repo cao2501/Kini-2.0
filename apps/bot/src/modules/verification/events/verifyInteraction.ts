@@ -1,4 +1,4 @@
-import { Interaction, GuildMember, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { Interaction, GuildMember, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, AttachmentBuilder } from 'discord.js';
 import { IEvent } from '../../../core/interfaces/IEvent';
 import { Kernel } from '../../../core/Kernel';
 import { getModuleConfig } from '../../../database/helpers';
@@ -22,8 +22,11 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
       const member = interaction.member as GuildMember;
 
       if (config.roleId && member.roles.cache.has(config.roleId)) {
+        const embed = UIBuilders.createSuccessEmbed('Xác Minh', '✅ Bạn đã được xác minh trước đó rồi!');
+        const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const file = new AttachmentBuilder(buffer, { name: 'verify.png' });
         return void interaction.reply({
-          embeds: [UIBuilders.createSuccessEmbed('Xác Minh', '✅ Bạn đã được xác minh trước đó rồi!')],
+          files: [file],
           ephemeral: true
         });
       }
@@ -35,8 +38,12 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
           data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'BUTTON', verified: true },
         }).catch(() => {});
         
+        const embed = UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công! Chào mừng bạn đến với server.');
+        const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const file = new AttachmentBuilder(buffer, { name: 'verify_success.png' });
+
         await interaction.reply({
-          embeds: [UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công! Chào mừng bạn đến với server.')],
+          files: [file],
           ephemeral: true
         });
 
@@ -68,8 +75,12 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
 
       } else if (type === 'TIME') {
         // 5-second delay
+        const embed = UIBuilders.createInfoEmbed('Đang Xác Minh', '⏱️ Đang xác minh... Vui lòng đợi 5 giây rồi nhấn lại.');
+        const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const file = new AttachmentBuilder(buffer, { name: 'verifying.png' });
+
         await interaction.reply({
-          embeds: [UIBuilders.createInfoEmbed('Đang Xác Minh', '⏱️ Đang xác minh... Vui lòng đợi 5 giây rồi nhấn lại.')],
+          files: [file],
           ephemeral: true
         });
         
@@ -79,8 +90,12 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
             data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'TIME', verified: true },
           }).catch(() => {});
           
+          const successEmbed = UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công!');
+          const successBuffer = await UIBuilders.convertToCanvasCard(successEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+          const successFile = new AttachmentBuilder(successBuffer, { name: 'verify_success.png' });
+
           await interaction.followUp({
-            embeds: [UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công!')],
+            files: [successFile],
             ephemeral: true
           });
         }, 5000);
@@ -91,16 +106,22 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
     if (interaction.isModalSubmit() && customId === 'verify:math:submit') {
       const challenge = this.mathChallenges.get(interaction.user.id);
       if (!challenge || Date.now() > challenge.expires) {
+        const embed = UIBuilders.createErrorEmbed('Hết Hạn Captcha', '❌ Captcha đã hết hạn hoặc không tồn tại. Vui lòng bấm xác minh lại.');
+        const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const file = new AttachmentBuilder(buffer, { name: 'error.png' });
         return void interaction.reply({
-          embeds: [UIBuilders.createErrorEmbed('Hết Hạn Captcha', '❌ Captcha đã hết hạn hoặc không tồn tại. Vui lòng bấm xác minh lại.')],
+          files: [file],
           ephemeral: true
         });
       }
 
       const answer = parseInt(interaction.fields.getTextInputValue('verify:math:answer'));
       if (isNaN(answer) || answer !== challenge.answer) {
+        const embed = UIBuilders.createErrorEmbed('Sai Đáp Án', `❌ Sai đáp án! Hãy thử lại một câu đố khác.`);
+        const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const file = new AttachmentBuilder(buffer, { name: 'error.png' });
         return void interaction.reply({
-          embeds: [UIBuilders.createErrorEmbed('Sai Đáp Án', `❌ Sai đáp án! Hãy thử lại một câu đố khác.`)],
+          files: [file],
           ephemeral: true
         });
       }
@@ -114,8 +135,12 @@ export default class VerifyInteractionEvent implements IEvent<'interactionCreate
         data: { guildId: interaction.guildId!, userId: interaction.user.id, type: 'MATH', verified: true },
       }).catch(() => {});
 
+      const embed = UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công! Chào mừng bạn đến với server.');
+      const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const file = new AttachmentBuilder(buffer, { name: 'verify_success.png' });
+
       await interaction.reply({
-        embeds: [UIBuilders.createSuccessEmbed('Xác Minh Thành Công', '✅ Xác minh thành công! Chào mừng bạn đến với server.')],
+        files: [file],
         ephemeral: true
       });
     }

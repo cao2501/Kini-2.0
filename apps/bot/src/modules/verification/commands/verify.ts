@@ -1,6 +1,6 @@
 import {
   ChatInputCommandInteraction, SlashCommandBuilder, PermissionFlagsBits,
-  ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder,
 } from 'discord.js';
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
@@ -34,10 +34,10 @@ export default class VerifyCommand implements ICommand {
     const guildId = interaction.guildId!;
 
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) && sub !== 'panel') {
-      return void interaction.reply({
-        embeds: [UIBuilders.createErrorEmbed('Từ Chối Quyền Hạn', '❌ Cần quyền Manage Server để sử dụng lệnh này.')],
-        ephemeral: true
-      });
+      const embed = UIBuilders.createErrorEmbed('Từ Chối Quyền Hạn', '❌ Cần quyền Manage Server để sử dụng lệnh này.');
+      const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const file = new AttachmentBuilder(buffer, { name: 'error.png' });
+      return void interaction.reply({ files: [file], ephemeral: true });
     }
 
     if (sub === 'setup') {
@@ -49,27 +49,31 @@ export default class VerifyCommand implements ICommand {
         type, roleId: role.id, channelId: channel?.id, enabled: true,
       });
 
+      const embed = UIBuilders.createSuccessEmbed('Cấu Hình Hoàn Tất', `✅ Xác minh **${type}** đã cấu hình!\nRole: ${role.name}\nDùng \`/verify panel\` để gửi panel.`);
+      const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const file = new AttachmentBuilder(buffer, { name: 'setup_success.png' });
+
       await interaction.reply({
-        embeds: [UIBuilders.createSuccessEmbed('Cấu Hình Hoàn Tất', `✅ Xác minh **${type}** đã cấu hình!\nRole: ${role}\nDùng \`/verify panel\` để gửi panel.`)],
+        files: [file],
         ephemeral: true,
       });
 
     } else if (sub === 'panel') {
       const { enabled, config } = await getModuleConfig<any>(guildId, 'verification');
       if (!enabled || !config.type) {
-        return void interaction.reply({
-          embeds: [UIBuilders.createErrorEmbed('Chưa Cấu Hình', '❌ Chưa cấu hình verify. Dùng `/verify setup`.')],
-          ephemeral: true
-        });
+        const embed = UIBuilders.createErrorEmbed('Chưa Cấu Hình', '❌ Chưa cấu hình verify. Dùng `/verify setup`.');
+        const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const file = new AttachmentBuilder(buffer, { name: 'error.png' });
+        return void interaction.reply({ files: [file], ephemeral: true });
       }
 
       const channelId = config.channelId ?? interaction.channelId;
       const ch = kernel.client.channels.cache.get(channelId);
       if (!ch?.isTextBased()) {
-        return void interaction.reply({
-          embeds: [UIBuilders.createErrorEmbed('Kênh Không Hợp Lệ', '❌ Kênh verify không hợp lệ.')],
-          ephemeral: true
-        });
+        const embed = UIBuilders.createErrorEmbed('Kênh Không Hợp Lệ', '❌ Kênh verify không hợp lệ.');
+        const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const file = new AttachmentBuilder(buffer, { name: 'error.png' });
+        return void interaction.reply({ files: [file], ephemeral: true });
       }
 
       const description = config.type === 'BUTTON' ? '👋 Nhấn nút bên dưới để xác minh và truy cập server.' :
@@ -87,9 +91,17 @@ export default class VerifyCommand implements ICommand {
         )
       );
 
-      await (ch as any).send({ embeds: [embed], components: [row] });
+      const panelBuffer = await UIBuilders.convertToCanvasCard(embed, undefined, undefined, interaction.guild?.name);
+      const panelFile = new AttachmentBuilder(panelBuffer, { name: 'verify_panel.png' });
+
+      await (ch as any).send({ files: [panelFile], components: [row] });
+
+      const successEmbed = UIBuilders.createSuccessEmbed('Gửi Panel Thành Công', `✅ Panel verify đã gửi vào <#${channelId}>.`);
+      const successBuffer = await UIBuilders.convertToCanvasCard(successEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const successFile = new AttachmentBuilder(successBuffer, { name: 'success.png' });
+
       await interaction.reply({
-        embeds: [UIBuilders.createSuccessEmbed('Gửi Panel Thành Công', `✅ Panel verify đã gửi vào <#${channelId}>.`)],
+        files: [successFile],
         ephemeral: true
       });
 
@@ -98,23 +110,33 @@ export default class VerifyCommand implements ICommand {
       const hours = interaction.options.getInteger('hours') ?? 24;
       await setModuleConfig(guildId, 'verification', { autoKick: { enabled, hours } });
       
+      const embed = UIBuilders.createSuccessEmbed('Cấu Hình Tự Kick', `✅ Auto-kick ${enabled ? `bật — kick sau **${hours}h** chưa verify` : 'đã tắt'}.`);
+      const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const file = new AttachmentBuilder(buffer, { name: 'autokick.png' });
+
       await interaction.reply({
-        embeds: [UIBuilders.createSuccessEmbed('Cấu Hình Tự Kick', `✅ Auto-kick ${enabled ? `bật — kick sau **${hours}h** chưa verify` : 'đã tắt'}.`)],
+        files: [file],
         ephemeral: true,
       });
 
     } else if (sub === 'info') {
       const { enabled, config } = await getModuleConfig<any>(guildId, 'verification');
+      const roleName = config.roleId ? (interaction.guild!.roles.cache.get(config.roleId)?.name ?? 'Unknown') : 'Chưa đặt';
+      const channelName = config.channelId ? (interaction.guild!.channels.cache.get(config.channelId)?.name ?? 'Unknown') : 'Chưa đặt';
+
       const embed = UIBuilders.createEmbed('✅ Cấu Hình Xác Minh')
         .addFields(
           { name: '🔘 Trạng thái', value: enabled ? '🟢 Bật' : '🔴 Tắt', inline: true },
           { name: '📋 Loại', value: config.type ?? 'Chưa cấu hình', inline: true },
-          { name: '🎭 Role', value: config.roleId ? `<@&${config.roleId}>` : 'Chưa đặt', inline: true },
-          { name: '📝 Kênh', value: config.channelId ? `<#${config.channelId}>` : 'Chưa đặt', inline: true },
+          { name: '🎭 Role', value: roleName, inline: true },
+          { name: '📝 Kênh', value: channelName, inline: true },
           { name: '🚫 Auto-kick', value: config.autoKick?.enabled ? `Sau ${config.autoKick.hours}h` : 'Tắt', inline: true },
         );
       
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const file = new AttachmentBuilder(buffer, { name: 'info.png' });
+
+      await interaction.reply({ files: [file], ephemeral: true });
     }
   }
 }

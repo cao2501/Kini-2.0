@@ -1125,6 +1125,203 @@ export class CardRenderer {
     return canvas.toBuffer('image/png');
   }
 
+  /**
+   * 12. Draw Generic Embed Card (Translates standard embeds to Canvas Cards)
+   */
+  public static async drawGenericEmbedCard(
+    title: string,
+    description: string,
+    fields: Array<{ name: string; value: string; inline?: boolean }>,
+    thumbnailUrl?: string,
+    colorHex?: string,
+    footer?: string,
+    author?: string,
+    userAvatarUrl?: string,
+    username?: string,
+    guildName?: string
+  ): Promise<Buffer> {
+    const width = 600;
+
+    // 1. Setup temporary canvas for text measurement
+    const tempCanvas = createCanvas(width, 100);
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.font = 'normal 14px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+
+    // 2. Wrap Description Text
+    const hasThumbnail = !!thumbnailUrl;
+    const descWidth = hasThumbnail ? 380 : 520;
+    const descLines = description ? this.wrapText(tempCtx, description, descWidth) : [];
+    const descHeight = descLines.length * 20;
+
+    // 3. Compute dynamic height
+    let contentY = 40;
+    
+    let titleHeight = 0;
+    if (author) titleHeight += 25;
+    if (title) titleHeight += 35;
+    if (author || title) {
+      contentY += titleHeight + 15;
+    }
+
+    let descY = contentY;
+    if (description) {
+      contentY += descHeight + 20;
+    }
+
+    const fieldPositions: Array<{ name: string; value: string; x: number; y: number; w: number; h: number }> = [];
+    if (fields.length > 0) {
+      let fieldY = contentY;
+      
+      for (let i = 0; i < fields.length; i++) {
+        const field = fields[i];
+        
+        tempCtx.font = 'normal 13px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+        const valLines = this.wrapText(tempCtx, field.value, 500);
+        const valHeight = valLines.length * 18;
+        const boxH = Math.max(55, 30 + valHeight);
+
+        fieldPositions.push({
+          name: field.name,
+          value: field.value,
+          x: 40,
+          y: fieldY,
+          w: 520,
+          h: boxH
+        });
+        
+        fieldY += boxH + 10;
+      }
+      contentY = fieldY + 10;
+    }
+
+    let footerY = 0;
+    if (footer || userAvatarUrl) {
+      footerY = contentY + 20;
+      contentY += 45;
+    }
+
+    const height = Math.max(160, contentY + 30);
+
+    // Create target canvas
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    // Draw Background
+    CanvasRenderer.drawRoundedRect(ctx, 0, 0, width, height, Theme.borderRadius.large, Theme.colors.background);
+
+    // Left Border Highlight
+    const borderCol = colorHex ?? Theme.colors.accentGold;
+    CanvasRenderer.drawRoundedRect(ctx, 0, 0, 14, height, 7, borderCol);
+
+    // Draw Author Name
+    let currentDrawY = 40;
+    if (author) {
+      ctx.fillStyle = Theme.colors.textMuted;
+      ctx.font = 'bold 12px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+      ctx.fillText(author.toUpperCase(), 40, currentDrawY + 12);
+      currentDrawY += 25;
+    }
+
+    // Draw Title
+    if (title) {
+      ctx.fillStyle = Theme.colors.textPrimary;
+      ctx.font = 'bold 22px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+      ctx.fillText(title, 40, currentDrawY + 18);
+      currentDrawY += 35;
+    }
+    
+    if (author || title) currentDrawY += 15;
+
+    // Draw Thumbnail
+    if (hasThumbnail) {
+      try {
+        const thumbX = width - 120;
+        const thumbY = 40;
+        const thumbSize = 80;
+        
+        ctx.save();
+        ctx.beginPath();
+        const radius = Theme.borderRadius.small;
+        ctx.moveTo(thumbX + radius, thumbY);
+        ctx.lineTo(thumbX + thumbSize - radius, thumbY);
+        ctx.quadraticCurveTo(thumbX + thumbSize, thumbY, thumbX + thumbSize, thumbY + radius);
+        ctx.lineTo(thumbX + thumbSize, thumbY + thumbSize - radius);
+        ctx.quadraticCurveTo(thumbX + thumbSize, thumbY + thumbSize, thumbX + thumbSize - radius, thumbY + thumbSize);
+        ctx.lineTo(thumbX + radius, thumbY + thumbSize);
+        ctx.quadraticCurveTo(thumbX, thumbY + thumbSize, thumbX, thumbY + thumbSize - radius);
+        ctx.lineTo(thumbX, thumbY + radius);
+        ctx.quadraticCurveTo(thumbX, thumbY, thumbX + radius, thumbY);
+        ctx.closePath();
+        ctx.clip();
+        
+        const img = await loadImage(thumbnailUrl!);
+        ctx.drawImage(img, thumbX, thumbY, thumbSize, thumbSize);
+        ctx.restore();
+        
+        CanvasRenderer.drawRoundedRect(ctx, thumbX, thumbY, thumbSize, thumbSize, radius, undefined, 'rgba(255, 255, 255, 0.08)', 1);
+      } catch (err) {
+        console.error('Failed to load thumbnail image:', err);
+      }
+    }
+
+    // Draw Description
+    if (description) {
+      ctx.fillStyle = Theme.colors.textSecondary;
+      ctx.font = 'normal 14px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+      
+      let lineY = descY + 14;
+      for (const line of descLines) {
+        ctx.fillText(line, 40, lineY);
+        lineY += 20;
+      }
+    }
+
+    // Draw Fields
+    for (const f of fieldPositions) {
+      CanvasRenderer.drawRoundedRect(ctx, f.x, f.y, f.w, f.h, Theme.borderRadius.small, Theme.colors.card);
+      CanvasRenderer.drawRoundedRect(ctx, f.x, f.y, f.w, f.h, Theme.borderRadius.small, undefined, 'rgba(255, 255, 255, 0.05)', 1);
+      CanvasRenderer.drawRoundedRect(ctx, f.x, f.y, 5, f.h, 2.5, borderCol);
+
+      ctx.fillStyle = Theme.colors.textMuted;
+      ctx.font = 'bold 12px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+      ctx.fillText(f.name, f.x + 18, f.y + 20);
+
+      ctx.fillStyle = Theme.colors.textPrimary;
+      ctx.font = 'normal 13px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+      const fValLines = this.wrapText(ctx, f.value, f.w - 36);
+      
+      let valY = f.y + 36;
+      for (const valLine of fValLines) {
+        ctx.fillText(valLine, f.x + 18, valY);
+        valY += 18;
+      }
+    }
+
+    // Draw Footer
+    if (footer || userAvatarUrl) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(40, footerY - 5);
+      ctx.lineTo(width - 40, footerY - 5);
+      ctx.stroke();
+
+      let footerX = 40;
+      if (userAvatarUrl) {
+        await CanvasRenderer.drawCircularAvatar(ctx, userAvatarUrl, 50, footerY + 12, 10, 'rgba(255,255,255,0.06)', 1);
+        footerX = 70;
+      }
+
+      ctx.fillStyle = Theme.colors.textMuted;
+      ctx.font = '12px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+      
+      const footerText = footer ?? (username ? `Yêu cầu bởi @${username}` : `${guildName ?? 'Server'} • KINI 2.0`);
+      ctx.fillText(footerText, footerX, footerY + 16);
+    }
+
+    return canvas.toBuffer('image/png');
+  }
+
   private static wrapText(
     ctx: CanvasRenderingContext2D,
     text: string,
