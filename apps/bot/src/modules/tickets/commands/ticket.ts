@@ -11,10 +11,12 @@ export default class TicketCommand implements ICommand {
   data = new SlashCommandBuilder()
     .setName('ticket')
     .setDescription('🎫 Hệ thống Ticket')
-    .addSubcommand(s => s.setName('panel').setDescription('Tạo panel ticket')
-      .addStringOption(o => o.setName('name').setDescription('Tên panel').setRequired(true))
+    .addSubcommand(s => s.setName('panel').setDescription('Tạo panel ticket tùy chỉnh')
+      .addStringOption(o => o.setName('name').setDescription('Tiêu đề panel (vd: The Fun Hub 💜)').setRequired(true))
       .addChannelOption(o => o.setName('channel').setDescription('Kênh đặt panel').setRequired(true))
-      .addStringOption(o => o.setName('description').setDescription('Mô tả cho panel'))
+      .addStringOption(o => o.setName('description').setDescription('Mô tả panel (chấp nhận \\n xuống dòng)').setRequired(true))
+      .addStringOption(o => o.setName('buttons').setDescription('Danh sách nút bấm cách nhau bằng dấu phẩy (vd: ✨ BOOKING, ✨ APPLY, ✨ SUPPORT)').setRequired(true))
+      .addStringOption(o => o.setName('content').setDescription('Văn bản gửi kèm bên ngoài Embed'))
     )
     .addSubcommand(s => s.setName('close').setDescription('Đóng ticket hiện tại')
       .addStringOption(o => o.setName('reason').setDescription('Lý do đóng'))
@@ -56,28 +58,63 @@ export default class TicketCommand implements ICommand {
 
     const name = interaction.options.getString('name', true);
     const channel = interaction.options.getChannel('channel', true) as TextChannel;
-    const description = interaction.options.getString('description') ?? 'Nhấn nút bên dưới để mở ticket hỗ trợ.';
+    
+    // Replace literal "\n" in input with actual newline characters
+    const rawDesc = interaction.options.getString('description', true);
+    const description = rawDesc.replace(/\\n/g, '\n');
+
+    const buttonsStr = interaction.options.getString('buttons', true);
+    const buttons = buttonsStr.split(',').map(b => b.trim()).filter(Boolean);
+    const content = interaction.options.getString('content');
+
+    if (buttons.length === 0) {
+      return void interaction.editReply('❌ Danh sách nút bấm không hợp lệ.');
+    }
+    if (buttons.length > 5) {
+      return void interaction.editReply('❌ Một panel chỉ được cấu hình tối đa 5 nút bấm.');
+    }
 
     await ensureGuild(interaction.guildId!, interaction.guild!.name);
 
+    const config = {
+      description,
+      buttons,
+      content
+    };
+
     const panel = await kernel.db.ticketPanel.create({
-      data: { guildId: interaction.guildId!, name, channelId: channel.id, type: 'BUTTON', config: JSON.stringify({ description }) },
+      data: { 
+        guildId: interaction.guildId!, 
+        name, 
+        channelId: channel.id, 
+        type: 'BUTTON', 
+        config: JSON.stringify(config) 
+      },
     });
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎫 ${name}`)
+      .setTitle(name)
       .setDescription(description)
-      .setColor(0x5865f2)
-      .setFooter({ text: 'Nhấn nút bên dưới để mở ticket' });
+      .setColor(0x8a2be2) // Purple-ish theme matching reference
+      .setTimestamp();
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`ticket:create:${panel.id}`)
-        .setLabel('🎫 Tạo Ticket')
-        .setStyle(ButtonStyle.Primary),
-    );
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    buttons.forEach((label, index) => {
+      const cleanType = label.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || `type${index}`;
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`ticket:create:${panel.id}:${cleanType}`)
+          .setLabel(label)
+          .setStyle(ButtonStyle.Secondary) // Secondary matches grey buttons in reference
+      );
+    });
 
-    const msg = await channel.send({ embeds: [embed], components: [row] });
+    const msg = await channel.send({
+      content: content || undefined,
+      embeds: [embed],
+      components: [row]
+    });
+
     await kernel.db.ticketPanel.update({ where: { id: panel.id }, data: { messageId: msg.id } });
 
     await interaction.editReply(`✅ Panel ticket **${name}** đã được tạo tại <#${channel.id}>!`);

@@ -8,12 +8,18 @@ export default class TicketInteractionEvent implements IEvent<'interactionCreate
 
   async execute(kernel: Kernel, interaction: Interaction): Promise<void> {
     if (!interaction.isButton()) return;
-    const [ns, action, id] = interaction.customId.split(':');
+    
+    const parts = interaction.customId.split(':');
+    const ns = parts[0];
+    const action = parts[1];
+    const id = parts[2];
+    const type = parts[3]; // cleanType like booking, apply, support
+
     if (ns !== 'ticket') return;
 
     if (action === 'create') {
       await interaction.deferReply({ ephemeral: true });
-      await TicketService.createTicket(kernel, interaction as ButtonInteraction, id);
+      await TicketService.createTicket(kernel, interaction as ButtonInteraction, id, type);
       
     } else if (action === 'close') {
       await interaction.reply({ content: '🔄 Đang xử lý đóng ticket và sao lưu dữ liệu...', ephemeral: true });

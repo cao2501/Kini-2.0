@@ -40,7 +40,7 @@ export class TicketService {
   /**
    * Create a new ticket as a sub-thread on the panel's channel
    */
-  static async createTicket(kernel: Kernel, interaction: ButtonInteraction, panelId: string): Promise<void> {
+  static async createTicket(kernel: Kernel, interaction: ButtonInteraction, panelId: string, type?: string): Promise<void> {
     const panel = await kernel.db.ticketPanel.findUnique({ where: { id: panelId } });
     if (!panel) return void interaction.editReply('❌ Panel không tồn tại.');
 
@@ -67,7 +67,7 @@ export class TicketService {
     }
 
     // Create private thread on the current panel channel
-    const threadName = `🎫-${interaction.user.username}`;
+    const threadName = type ? `🎫-${type}-${interaction.user.username}` : `🎫-${interaction.user.username}`;
     let thread: ThreadChannel;
 
     try {
