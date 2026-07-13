@@ -279,39 +279,50 @@ export default class AICommand implements ICommand {
     history: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>,
     systemInstruction: string,
   ): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const models = ['gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
+    let lastError: any = null;
 
-    const contents = [
-      ...history,
-      { role: 'user', parts: [{ text: message }] },
-    ];
+    for (const model of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    const body: any = {
-      contents,
-      systemInstruction: { parts: [{ text: systemInstruction }] },
-      generationConfig: {
-        temperature: 0.8,
-        topP: 0.95,
-        maxOutputTokens: 1500,
-      },
-      safetySettings: [
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-      ],
-    };
+      const contents = [
+        ...history,
+        { role: 'user', parts: [{ text: message }] },
+      ];
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+      const body: any = {
+        contents,
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          temperature: 0.8,
+          topP: 0.95,
+          maxOutputTokens: 1500,
+        },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+        ],
+      };
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error((err as any).error?.message ?? `HTTP ${res.status}`);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (res.ok) {
+          const data = await res.json() as any;
+          return data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Không có phản hồi.';
+        }
+
+        const err = await res.json().catch(() => ({}));
+        lastError = new Error((err as any).error?.message ?? `HTTP ${res.status}`);
+      } catch (e: any) {
+        lastError = e;
+      }
     }
 
-    const data = await res.json() as any;
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Không có phản hồi.';
+    throw lastError || new Error('All Gemini model endpoints failed.');
   }
 }
