@@ -178,7 +178,37 @@ class MusicManager {
         };
       } else {
         const validation = await play.validate(query);
-        if (validation === 'yt_video' || (query.startsWith('http') && !query.includes('soundcloud.com'))) {
+        if (validation === 'yt_playlist' || (query.startsWith('http') && query.includes('list='))) {
+          const playlist = await play.playlist_info(query, { incomplete: true });
+          const videos = await playlist.all_videos();
+          if (!videos || videos.length === 0) {
+            return null;
+          }
+
+          const firstVideo = videos[0];
+          track = {
+            title: firstVideo.title || 'Unknown Video',
+            url: firstVideo.url,
+            duration: firstVideo.durationRaw || '00:00',
+            requester,
+            thumbnail: firstVideo.thumbnails[0]?.url || playlist.thumbnail?.url,
+            playlist: {
+              name: playlist.title || 'Unknown Playlist',
+              count: videos.length
+            }
+          };
+
+          for (let i = 1; i < videos.length; i++) {
+            const v = videos[i];
+            queue.tracks.push({
+              title: v.title || 'Unknown Video',
+              url: v.url,
+              duration: v.durationRaw || '00:00',
+              requester,
+              thumbnail: v.thumbnails[0]?.url || playlist.thumbnail?.url
+            });
+          }
+        } else if (validation === 'yt_video' || (query.startsWith('http') && !query.includes('soundcloud.com'))) {
           const info = await play.video_info(query);
           track = {
             title: info.video_details.title || 'Unknown Video',
