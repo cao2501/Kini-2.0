@@ -279,7 +279,7 @@ export default class AICommand implements ICommand {
     history: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>,
     systemInstruction: string,
   ): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const contents = [
       ...history,
