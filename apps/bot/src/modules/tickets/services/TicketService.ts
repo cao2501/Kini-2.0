@@ -66,8 +66,33 @@ export class TicketService {
       return void interaction.editReply('❌ Kênh không hợp lệ để tạo ticket.');
     }
 
-    // Create private thread on the current panel channel
-    const threadName = type ? `🎫-${type}-${interaction.user.username}` : `🎫-${interaction.user.username}`;
+    // Parse button configs
+    let buttonLabel = type || 'ticket';
+    let welcomeTemplate = 'Xin chào {user}! Vui lòng mô tả vấn đề của bạn và staff sẽ hỗ trợ sớm.';
+
+    if (config.buttons && Array.isArray(config.buttons)) {
+      const foundBtn = config.buttons.find((b: any) => typeof b === 'object' && b.id === type);
+      if (foundBtn) {
+        buttonLabel = foundBtn.id || type || 'ticket';
+        if (foundBtn.welcomeMessage) {
+          welcomeTemplate = foundBtn.welcomeMessage;
+        }
+      }
+    }
+
+    // 1. Create a temporary ticket in the database first to obtain a unique ID suffix
+    const tempTicket = await kernel.db.ticket.create({
+      data: {
+        guildId: interaction.guildId!,
+        panelId,
+        channelId: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        userId: interaction.user.id,
+        status: 'OPEN'
+      },
+    });
+
+    const ticketSuffix = tempTicket.id.slice(-4).toUpperCase();
+    const threadName = `🎫-${buttonLabel}-${interaction.user.username}-${ticketSuffix}`;
     let thread: ThreadChannel;
 
     try {
@@ -79,7 +104,6 @@ export class TicketService {
       });
     } catch (err: any) {
       logger.warn(`Private thread creation failed, falling back to public thread: ${err.message}`);
-      // Fallback to public thread (e.g. if guild doesn't have private threads unlocked)
       thread = await (parentChannel as TextChannel).threads.create({
         name: threadName,
         autoArchiveDuration: 1440,
@@ -88,36 +112,34 @@ export class TicketService {
       });
     }
 
+    // 2. Update database ticket record with the real thread channel ID
+    await kernel.db.ticket.update({
+      where: { id: tempTicket.id },
+      data: { channelId: thread.id }
+    });
+
     // Add ticket owner to thread
     await thread.members.add(interaction.user.id).catch(() => {});
 
-    // Save ticket to Database
-    const ticket = await kernel.db.ticket.create({
-      data: {
-        guildId: interaction.guildId!,
-        panelId,
-        channelId: thread.id,
-        userId: interaction.user.id,
-        status: 'OPEN'
-      },
-    });
-
     kernel.eventBus.emit('ticket:create', {
       guildId: interaction.guildId!,
-      ticketId: ticket.id,
+      ticketId: tempTicket.id,
       userId: interaction.user.id,
       channelId: thread.id
     });
 
+    // 3. Format custom welcome message
+    const welcomeMsg = welcomeTemplate.replace(/{user}/g, `${interaction.user}`);
+
     const embed = new EmbedBuilder()
       .setTitle('🎫 Ticket Mới')
       .setColor(0x5865f2)
-      .setDescription(`Xin chào ${interaction.user}! Vui lòng mô tả vấn đề của bạn và staff sẽ hỗ trợ sớm.`)
+      .setDescription(welcomeMsg)
       .setTimestamp();
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`ticket:close:${ticket.id}`).setLabel('🔒 Đóng Ticket').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId(`ticket:claim:${ticket.id}`).setLabel('✋ Nhận Ticket').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`ticket:close:${tempTicket.id}`).setLabel('🔒 Đóng Ticket').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`ticket:claim:${tempTicket.id}`).setLabel('✋ Nhận Ticket').setStyle(ButtonStyle.Secondary),
     );
 
     await thread.send({ content: `${interaction.user}`, embeds: [embed], components: [row] });
