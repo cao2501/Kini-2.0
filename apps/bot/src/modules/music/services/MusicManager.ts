@@ -35,6 +35,21 @@ export interface GuildQueue {
 
 class MusicManager {
   private queues = new Map<string, GuildQueue>();
+  private soundcloudAuthorized = false;
+
+  private async ensureSoundCloudAuth(): Promise<void> {
+    if (this.soundcloudAuthorized) return;
+    try {
+      const client_id = await play.getFreeClientID();
+      if (client_id) {
+        await play.setToken({ soundcloud: { client_id } });
+        this.soundcloudAuthorized = true;
+        logger.info('SoundCloud client ID successfully initialized for fallback.');
+      }
+    } catch (err: any) {
+      logger.error('Failed to initialize SoundCloud client ID:', err);
+    }
+  }
 
   getQueue(guildId: string): GuildQueue | undefined {
     return this.queues.get(guildId);
@@ -156,15 +171,41 @@ class MusicManager {
         });
       } catch (err: any) {
         logger.warn(`Standard play-dl stream failed for ${track.title}: ${err.message}. Attempting format-18 fallback...`);
-        const info = await play.video_info(track.url);
-        const fallbackFormat = info.format.find(f => f.itag === 18) || info.format.find(f => f.url);
-        if (fallbackFormat && fallbackFormat.url) {
-          logger.info(`Fallback stream succeeded using format ${fallbackFormat.itag} for ${track.title}`);
-          resource = createAudioResource(fallbackFormat.url, {
-            inlineVolume: true
+        let fallbackSucceeded = false;
+        try {
+          const info = await play.video_info(track.url);
+          const fallbackFormat = info.format.find(f => f.itag === 18) || info.format.find(f => f.url);
+          if (fallbackFormat && fallbackFormat.url) {
+            logger.info(`Fallback stream succeeded using format ${fallbackFormat.itag} for ${track.title}`);
+            resource = createAudioResource(fallbackFormat.url, {
+              inlineVolume: true
+            });
+            fallbackSucceeded = true;
+          }
+        } catch (videoInfoErr: any) {
+          logger.warn(`Failed to fetch video_info fallback for ${track.title}: ${videoInfoErr.message}`);
+        }
+
+        if (!fallbackSucceeded) {
+          logger.warn(`YouTube stream totally blocked for "${track.title}". Attempting SoundCloud fallback...`);
+          await this.ensureSoundCloudAuth();
+          const results = await play.search(track.title, {
+            source: { soundcloud: 'tracks' },
+            limit: 1
           });
-        } else {
-          throw new Error('No deciphered formats available on YouTube.');
+          if (results && results.length > 0) {
+            const scTrack = results[0];
+            logger.info(`Found SoundCloud fallback track: "${scTrack.name}" -> ${scTrack.url}`);
+            const stream = await play.stream(scTrack.url);
+            resource = createAudioResource(stream.stream, {
+              inputType: stream.type,
+              inlineVolume: true
+            });
+            // Update title to let user know we fell back to SoundCloud
+            track.title = `${scTrack.name} (SoundCloud Fallback)`;
+          } else {
+            throw new Error('No deciphered formats available on YouTube, and no match found on SoundCloud.');
+          }
         }
       }
 
