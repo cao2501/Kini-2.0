@@ -5,6 +5,7 @@ import {
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
 import { ensureGuild } from '../../../database/helpers';
+import { TicketService } from '../services/TicketService';
 
 export default class TicketCommand implements ICommand {
   data = new SlashCommandBuilder()
@@ -87,18 +88,12 @@ export default class TicketCommand implements ICommand {
     if (!ticket) return void interaction.reply({ content: '❌ Đây không phải kênh ticket.', ephemeral: true });
 
     const reason = interaction.options.getString('reason') ?? 'Không có lý do';
-    await kernel.db.ticket.update({ where: { id: ticket.id }, data: { status: 'CLOSED', closedAt: new Date() } });
-
-    kernel.eventBus.emit('ticket:close', { guildId: ticket.guildId, ticketId: ticket.id, userId: interaction.user.id });
-
-    const embed = new EmbedBuilder().setTitle('🎫 Ticket Đã Đóng').setColor(0xe74c3c)
-      .addFields({ name: '📋 Lý do', value: reason }, { name: '👤 Đóng bởi', value: interaction.user.tag });
-
-    await interaction.reply({ embeds: [embed] });
-
-    setTimeout(async () => {
-      await interaction.channel?.delete().catch(() => {});
-    }, 5000);
+    await interaction.reply({ content: '🔄 Đang xử lý đóng ticket và sao lưu dữ liệu...', ephemeral: true });
+    
+    const channel = interaction.channel;
+    if (channel && (channel.isTextBased() || channel.isThread())) {
+      await TicketService.closeTicket(kernel, channel as any, interaction.user, reason);
+    }
   }
 
   private async claimTicket(interaction: ChatInputCommandInteraction, kernel: Kernel): Promise<void> {
@@ -106,10 +101,12 @@ export default class TicketCommand implements ICommand {
     if (!ticket) return void interaction.reply({ content: '❌ Đây không phải kênh ticket.', ephemeral: true });
     if (ticket.claimedBy) return void interaction.reply({ content: `❌ Ticket đã được nhận bởi <@${ticket.claimedBy}>.`, ephemeral: true });
 
-    await kernel.db.ticket.update({ where: { id: ticket.id }, data: { claimedBy: interaction.user.id } });
-    kernel.eventBus.emit('ticket:claim', { guildId: ticket.guildId, ticketId: ticket.id, moderatorId: interaction.user.id });
-
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2ecc71).setDescription(`✅ ${interaction.user} đã nhận ticket này.`)] });
+    await interaction.reply({ content: '🔄 Đang xử lý nhận ticket...', ephemeral: true });
+    
+    const channel = interaction.channel;
+    if (channel && (channel.isTextBased() || channel.isThread())) {
+      await TicketService.claimTicket(kernel, channel as any, interaction.user);
+    }
   }
 
   private async transferTicket(interaction: ChatInputCommandInteraction, kernel: Kernel): Promise<void> {
