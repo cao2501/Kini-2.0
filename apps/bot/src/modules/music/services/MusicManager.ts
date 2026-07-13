@@ -17,6 +17,10 @@ export interface Track {
   duration: string;
   requester: string;
   thumbnail?: string;
+  playlist?: {
+    name: string;
+    count: number;
+  };
 }
 
 export interface GuildQueue {
@@ -36,6 +40,7 @@ export interface GuildQueue {
 class MusicManager {
   private queues = new Map<string, GuildQueue>();
   private soundcloudAuthorized = false;
+  private spotifyAuthorized = false;
 
   private async ensureSoundCloudAuth(): Promise<void> {
     if (this.soundcloudAuthorized) return;
@@ -48,6 +53,31 @@ class MusicManager {
       }
     } catch (err: any) {
       logger.error('Failed to initialize SoundCloud client ID:', err);
+    }
+  }
+
+  private async ensureSpotifyAuth(): Promise<boolean> {
+    if (this.spotifyAuthorized) return true;
+    const client_id = process.env.SPOTIFY_CLIENT_ID;
+    const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
+
+    if (!client_id || !client_secret) {
+      return false;
+    }
+
+    try {
+      await play.setToken({
+        spotify: {
+          client_id,
+          client_secret
+        }
+      });
+      this.spotifyAuthorized = true;
+      logger.info('Spotify client credentials successfully initialized for playback.');
+      return true;
+    } catch (err: any) {
+      logger.error('Failed to initialize Spotify credentials:', err);
+      return false;
     }
   }
 
@@ -83,7 +113,56 @@ class MusicManager {
     
     try {
       // Validate query
-      if (play.is_soundcloud_link(query)) {
+      const spType = play.sp_validate(query);
+      if (spType === 'track') {
+        const authed = await this.ensureSpotifyAuth();
+        if (!authed) {
+          throw new Error('Spotify credentials are not configured. Please add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to the .env file.');
+        }
+        const info = await play.spotify(query) as any;
+        track = {
+          title: `${info.name} - ${info.artists.map((a: any) => a.name).join(', ')}`,
+          url: info.url, // Store Spotify URL, search/resolve it when starting stream
+          duration: '00:00', // Resolved lazily when streaming
+          requester,
+          thumbnail: info.thumbnail?.url
+        };
+      } else if (spType === 'album' || spType === 'playlist') {
+        const authed = await this.ensureSpotifyAuth();
+        if (!authed) {
+          throw new Error('Spotify credentials are not configured. Please add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to the .env file.');
+        }
+        const info = await play.spotify(query) as any;
+        const spotifyTracks = await info.all_tracks();
+        if (!spotifyTracks || spotifyTracks.length === 0) {
+          return null;
+        }
+
+        const firstTrack = spotifyTracks[0];
+        track = {
+          title: `${firstTrack.name} - ${firstTrack.artists.map((a: any) => a.name).join(', ')}`,
+          url: firstTrack.url,
+          duration: '00:00',
+          requester,
+          thumbnail: firstTrack.thumbnail?.url || info.thumbnail?.url,
+          playlist: {
+            name: info.name,
+            count: spotifyTracks.length
+          }
+        };
+
+        // Push the rest of the tracks asynchronously to the queue
+        for (let i = 1; i < spotifyTracks.length; i++) {
+          const t = spotifyTracks[i];
+          queue.tracks.push({
+            title: `${t.name} - ${t.artists.map((a: any) => a.name).join(', ')}`,
+            url: t.url,
+            duration: '00:00',
+            requester,
+            thumbnail: t.thumbnail?.url || info.thumbnail?.url
+          });
+        }
+      } else if (query.includes('soundcloud.com')) {
         await this.ensureSoundCloudAuth();
         const info = await play.soundcloud(query) as any;
         const mins = Math.floor((info.durationInMs || 0) / 60000);
@@ -185,6 +264,49 @@ class MusicManager {
           logger.error('Audio Player Error:', { error: err });
           this.handleNextTrack(guildId);
         });
+      }
+
+      // If it is a Spotify track, we resolve it to YouTube/SoundCloud before streaming
+      if (track.url.includes('spotify.com')) {
+        logger.info(`Resolving Spotify track: "${track.title}" ...`);
+        
+        let resolvedUrl = '';
+        try {
+          const searchResult = await play.search(track.title, { limit: 1 });
+          if (searchResult && searchResult.length > 0) {
+            resolvedUrl = searchResult[0].url;
+            track.duration = searchResult[0].durationRaw || '00:00';
+            if (!track.thumbnail) {
+              track.thumbnail = searchResult[0].thumbnails[0]?.url;
+            }
+          }
+        } catch (searchErr: any) {
+          logger.warn(`YouTube search resolution failed for Spotify track "${track.title}": ${searchErr.message}`);
+        }
+
+        // Fallback to SoundCloud search if YouTube search failed or yielded nothing
+        if (!resolvedUrl) {
+          try {
+            await this.ensureSoundCloudAuth();
+            const scResult = await play.search(track.title, {
+              source: { soundcloud: 'tracks' },
+              limit: 1
+            });
+            if (scResult && scResult.length > 0) {
+              resolvedUrl = scResult[0].url;
+              track.title = `${scResult[0].name} (SoundCloud Fallback)`;
+            }
+          } catch (scSearchErr: any) {
+            logger.error(`SoundCloud search resolution failed for Spotify track "${track.title}":`, scSearchErr);
+          }
+        }
+
+        if (!resolvedUrl) {
+          throw new Error('Could not resolve Spotify track on YouTube or SoundCloud.');
+        }
+
+        logger.info(`Resolved "${track.title}" to: ${resolvedUrl}`);
+        track.url = resolvedUrl;
       }
 
       // 3. Get Audio Stream with robust fallback for YouTube signature cipher changes

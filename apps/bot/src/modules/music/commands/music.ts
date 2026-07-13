@@ -60,23 +60,36 @@ export default class MusicCommand implements ICommand {
       }
 
       const queue = musicManager.getQueue(guildId);
-      const isQueueing = queue && queue.tracks.length > 1;
 
-      if (isQueueing) {
+      if (track.playlist) {
         const embed = new EmbedBuilder()
-          .setTitle('✅ Thêm vào Queue')
+          .setTitle('✅ Đã thêm Playlist/Album')
           .setColor(0x1db954)
-          .setDescription(`[**${track.title}**](${track.url})`)
-          .addFields(
-            { name: '📋 Vị trí', value: `#${queue.tracks.length}`, inline: true },
-            { name: '⏱️ Độ dài', value: track.duration, inline: true }
-          );
+          .setDescription(`Đã thêm **${track.playlist.count}** bài hát từ playlist/album **${track.playlist.name}** vào hàng đợi.`)
+          .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` })
+          .setTimestamp();
         if (track.thumbnail) {
           embed.setThumbnail(track.thumbnail);
         }
         await interaction.editReply({ embeds: [embed] });
       } else {
-        await interaction.editReply(`🎶 Đang chuẩn bị phát: **${track.title}**`);
+        const isQueueing = queue && queue.tracks.length > 1;
+        if (isQueueing) {
+          const embed = new EmbedBuilder()
+            .setTitle('✅ Thêm vào Queue')
+            .setColor(0x1db954)
+            .setDescription(`[**${track.title}**](${track.url})`)
+            .addFields(
+              { name: '📋 Vị trí', value: `#${queue.tracks.length}`, inline: true },
+              { name: '⏱️ Độ dài', value: track.duration, inline: true }
+            );
+          if (track.thumbnail) {
+            embed.setThumbnail(track.thumbnail);
+          }
+          await interaction.editReply({ embeds: [embed] });
+        } else {
+          await interaction.editReply(`🎶 Đang chuẩn bị phát: **${track.title}**`);
+        }
       }
 
     } else if (sub === 'queue') {
