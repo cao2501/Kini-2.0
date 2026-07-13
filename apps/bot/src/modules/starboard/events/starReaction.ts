@@ -1,7 +1,8 @@
-import { MessageReaction, User, EmbedBuilder } from 'discord.js';
+import { MessageReaction, User, AttachmentBuilder } from 'discord.js';
 import { IEvent } from '../../../core/interfaces/IEvent';
 import { Kernel } from '../../../core/Kernel';
 import { getModuleConfig } from '../../../database/helpers';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class StarboardReactionEvent implements IEvent<'messageReactionAdd'> {
   name = 'messageReactionAdd' as const;
@@ -37,24 +38,28 @@ export default class StarboardReactionEvent implements IEvent<'messageReactionAd
     if (!sbChannel?.isTextBased()) return;
 
     const message = reaction.message;
-    const embed = new EmbedBuilder()
+    const channelName = message.guild!.channels.cache.get(message.channelId)?.name ?? 'unknown-channel';
+
+    const embed = UIBuilders.createEmbed('⭐ Starboard', message.content?.slice(0, 2000) || undefined)
       .setColor(0xf1c40f)
-      .setAuthor({ name: message.author?.tag ?? 'Unknown', iconURL: message.author?.displayAvatarURL() })
-      .setDescription(message.content?.slice(0, 2000) || null)
       .addFields(
         { name: '📌 Original', value: `[Jump to message](${message.url})`, inline: true },
-        { name: '📝 Channel', value: `<#${message.channelId}>`, inline: true },
-      )
-      .setTimestamp(message.createdAt);
+        { name: '📝 Channel', value: `#${channelName}`, inline: true },
+      );
 
-    if (message.attachments.first()) {
-      embed.setImage(message.attachments.first()!.url);
-    }
+    const authorAvatar = message.author?.displayAvatarURL({ extension: 'png' });
+    const buffer = await UIBuilders.convertToCanvasCard(
+      embed,
+      authorAvatar,
+      message.author?.username,
+      guild.name
+    );
+    const file = new AttachmentBuilder(buffer, { name: 'starboard.png' });
 
     if (!existing) {
       const sbMsg = await (sbChannel as any).send({
         content: `${emoji} **${count}** | <#${message.channelId}>`,
-        embeds: [embed],
+        files: [file],
       });
       await kernel.db.starboardEntry.create({
         data: { guildId: guild.id, messageId: message.id, starboardMessageId: sbMsg.id, channelId: message.channelId, authorId: message.author?.id ?? 'unknown', starCount: count },
@@ -64,7 +69,11 @@ export default class StarboardReactionEvent implements IEvent<'messageReactionAd
       await kernel.db.starboardEntry.update({ where: { guildId_messageId: { guildId: guild.id, messageId: message.id } }, data: { starCount: count } });
       const sbMsg = await (sbChannel as any).messages.fetch(existing.starboardMessageId).catch(() => null);
       if (sbMsg) {
-        await sbMsg.edit({ content: `${emoji} **${count}** | <#${message.channelId}>`, embeds: [embed] });
+        await sbMsg.edit({
+          content: `${emoji} **${count}** | <#${message.channelId}>`,
+          files: [file],
+          attachments: []
+        });
       }
     }
   }

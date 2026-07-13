@@ -1,9 +1,10 @@
 import {
-  ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits,
+  ChatInputCommandInteraction, SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder,
 } from 'discord.js';
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
 import { setModuleConfig, getModuleConfig } from '../../../database/helpers';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class StarboardCommand implements ICommand {
   data = new SlashCommandBuilder()
@@ -31,8 +32,12 @@ export default class StarboardCommand implements ICommand {
 
       await setModuleConfig(guildId, 'starboard', { channelId: channel.id, threshold, emoji, enabled: true });
 
+      const successEmbed = UIBuilders.createSuccessEmbed('Thiết Lập Thành Công', `✅ Starboard đã cấu hình!\n📝 Kênh: <#${channel.id}>\n⭐ Ngưỡng: ${threshold} ${emoji}`);
+      const successBuf = await UIBuilders.convertToCanvasCard(successEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const successFile = new AttachmentBuilder(successBuf, { name: 'success.png' });
+
       await interaction.reply({
-        content: `✅ Starboard đã cấu hình!\n📝 Kênh: <#${channel.id}>\n⭐ Ngưỡng: ${threshold} ${emoji}`,
+        files: [successFile],
         ephemeral: true,
       });
 
@@ -41,28 +46,39 @@ export default class StarboardCommand implements ICommand {
       const { config } = await getModuleConfig<any>(guildId, 'starboard');
       const ignored: string[] = config.ignoredChannels ?? [];
       const idx = ignored.indexOf(channel.id);
+      
+      let msg = '';
       if (idx === -1) {
         ignored.push(channel.id);
         await setModuleConfig(guildId, 'starboard', { ignoredChannels: ignored });
-        await interaction.reply({ content: `✅ Kênh <#${channel.id}> sẽ bị bỏ qua khỏi starboard.`, ephemeral: true });
+        msg = `✅ Kênh <#${channel.id}> sẽ bị bỏ qua khỏi starboard.`;
       } else {
         ignored.splice(idx, 1);
         await setModuleConfig(guildId, 'starboard', { ignoredChannels: ignored });
-        await interaction.reply({ content: `✅ Kênh <#${channel.id}> đã được unignore.`, ephemeral: true });
+        msg = `✅ Kênh <#${channel.id}> đã được unignore.`;
       }
+
+      const successEmbed = UIBuilders.createSuccessEmbed('Cập Nhật Thành Công', msg);
+      const successBuf = await UIBuilders.convertToCanvasCard(successEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const successFile = new AttachmentBuilder(successBuf, { name: 'success.png' });
+
+      await interaction.reply({ files: [successFile], ephemeral: true });
 
     } else if (sub === 'info') {
       const { enabled, config } = await getModuleConfig<any>(guildId, 'starboard');
-      const embed = new EmbedBuilder()
-        .setTitle('⭐ Cấu Hình Starboard')
+      const channelName = config.channelId ? (interaction.guild!.channels.cache.get(config.channelId)?.name ?? 'Unknown') : 'Chưa đặt';
+      
+      const embed = UIBuilders.createEmbed('⭐ Cấu Hình Starboard')
         .setColor(0xf1c40f)
         .addFields(
           { name: '🔘 Trạng thái', value: enabled ? '🟢 Bật' : '🔴 Tắt', inline: true },
-          { name: '📝 Kênh', value: config.channelId ? `<#${config.channelId}>` : 'Chưa đặt', inline: true },
-          { name: '⭐ Ngưỡng', value: `${config.threshold ?? 3} ${config.emoji ?? '⭐'}`, inline: true },
-          { name: '🚫 Ignored', value: config.ignoredChannels?.length ? config.ignoredChannels.map((id: string) => `<#${id}>`).join(', ') : 'Không có' },
+          { name: '📝 Kênh', value: channelName, inline: true },
+          { name: '⭐ Ngưỡng', value: `${config.threshold ?? 3} ${config.emoji ?? '⭐'}`, inline: true }
         );
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      
+      const buffer = await UIBuilders.convertToCanvasCard(embed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const file = new AttachmentBuilder(buffer, { name: 'info.png' });
+      await interaction.reply({ files: [file], ephemeral: true });
     }
   }
 }

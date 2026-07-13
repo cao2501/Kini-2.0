@@ -1,9 +1,10 @@
 import {
-  ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits,
+  ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, AttachmentBuilder,
 } from 'discord.js';
 import { ICommand } from '../../../core/interfaces/ICommand';
 import { Kernel } from '../../../core/Kernel';
 import { ensureGuild } from '../../../database/helpers';
+import { UIBuilders } from '../../../core/ui/UIBuilders';
 
 export default class SuggestionCommand implements ICommand {
   data = new SlashCommandBuilder()
@@ -29,16 +30,22 @@ export default class SuggestionCommand implements ICommand {
 
       const { config } = await import('../../../database/helpers').then(m => m.getModuleConfig(guildId, 'suggestions'));
       const cfg = config as any;
-      if (!cfg.channelId) return void interaction.editReply('❌ Admin chưa cấu hình kênh đề xuất. Dùng `/suggest setup`.');
+      if (!cfg.channelId) {
+        const errorEmbed = UIBuilders.createErrorEmbed('Chưa Cấu Hình', '❌ Admin chưa cấu hình kênh đề xuất. Dùng `/suggest setup`.');
+        const errBuf = await UIBuilders.convertToCanvasCard(errorEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const errFile = new AttachmentBuilder(errBuf, { name: 'error.png' });
+        return void interaction.editReply({ files: [errFile] });
+      }
 
       await ensureGuild(guildId, interaction.guild!.name);
 
-      const embed = new EmbedBuilder()
-        .setTitle('💡 Đề Xuất Mới')
+      const embed = UIBuilders.createEmbed('💡 Đề Xuất Mới', content)
         .setColor(0xf39c12)
-        .setDescription(content)
-        .addFields({ name: '👤 Người đề xuất', value: anonymous ? '🔒 Ẩn danh' : interaction.user.tag })
-        .setTimestamp();
+        .addFields({ name: '👤 Người đề xuất', value: anonymous ? '🔒 Ẩn danh' : interaction.user.tag });
+
+      const avatarUrl = anonymous ? undefined : interaction.user.displayAvatarURL({ extension: 'png' });
+      const buffer = await UIBuilders.convertToCanvasCard(embed, avatarUrl, anonymous ? 'Ẩn danh' : interaction.user.username, interaction.guild?.name);
+      const file = new AttachmentBuilder(buffer, { name: 'suggestion.png' });
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId('suggest:upvote:PLACEHOLDER').setLabel('👍 0').setStyle(ButtonStyle.Success),
@@ -46,8 +53,14 @@ export default class SuggestionCommand implements ICommand {
       );
 
       const ch = kernel.client.channels.cache.get(cfg.channelId);
-      if (!ch?.isTextBased()) return void interaction.editReply('❌ Kênh đề xuất không hợp lệ.');
-      const msg = await (ch as any).send({ embeds: [embed], components: [row] });
+      if (!ch?.isTextBased()) {
+        const errorEmbed = UIBuilders.createErrorEmbed('Kênh Không Hợp Lệ', '❌ Kênh đề xuất không hợp lệ.');
+        const errBuf = await UIBuilders.convertToCanvasCard(errorEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const errFile = new AttachmentBuilder(errBuf, { name: 'error.png' });
+        return void interaction.editReply({ files: [errFile] });
+      }
+
+      const msg = await (ch as any).send({ files: [file], components: [row] });
 
       const sug = await kernel.db.suggestion.create({
         data: { guildId, channelId: cfg.channelId, messageId: msg.id, authorId: anonymous ? 'anonymous' : interaction.user.id, content, anonymous }
@@ -59,30 +72,74 @@ export default class SuggestionCommand implements ICommand {
       );
       await msg.edit({ components: [updatedRow] });
 
-      await interaction.editReply(`✅ Đề xuất của bạn đã được gửi!`);
+      const successEmbed = UIBuilders.createSuccessEmbed('Gửi Đề Xuất Thành Công', '✅ Đề xuất của bạn đã được gửi!');
+      const successBuf = await UIBuilders.convertToCanvasCard(successEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const successFile = new AttachmentBuilder(successBuf, { name: 'success.png' });
+
+      await interaction.editReply({ files: [successFile] });
+
     } else if (sub === 'approve' || sub === 'reject' || sub === 'consider') {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) return void interaction.reply({ content: '❌ Bạn cần quyền Manage Server.', ephemeral: true });
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+        const errorEmbed = UIBuilders.createErrorEmbed('Từ Chối Quyền Hạn', '❌ Bạn cần quyền Manage Server.');
+        const errBuf = await UIBuilders.convertToCanvasCard(errorEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const errFile = new AttachmentBuilder(errBuf, { name: 'error.png' });
+        return void interaction.reply({ files: [errFile], ephemeral: true });
+      }
+
       const id = interaction.options.getString('id', true);
       const note = interaction.options.getString('note') ?? interaction.options.getString('reason') ?? undefined;
       const status = sub === 'approve' ? 'APPROVED' : sub === 'reject' ? 'REJECTED' : 'CONSIDERED';
+
       const sug = await kernel.db.suggestion.findFirst({ where: { guildId, id: { endsWith: id } } });
-      if (!sug) return void interaction.reply({ content: '❌ Không tìm thấy đề xuất.', ephemeral: true });
+      if (!sug) {
+        const errorEmbed = UIBuilders.createErrorEmbed('Lỗi Giao Dịch', '❌ Không tìm thấy đề xuất.');
+        const errBuf = await UIBuilders.convertToCanvasCard(errorEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+        const errFile = new AttachmentBuilder(errBuf, { name: 'error.png' });
+        return void interaction.reply({ files: [errFile], ephemeral: true });
+      }
+
       await kernel.db.suggestion.update({ where: { id: sug.id }, data: { status, reviewNote: note, reviewedBy: interaction.user.id } });
+      
       const colors: Record<string, number> = { APPROVED: 0x2ecc71, REJECTED: 0xe74c3c, CONSIDERED: 0xf39c12 };
       const icons: Record<string, string> = { APPROVED: '✅', REJECTED: '❌', CONSIDERED: '🤔' };
+      
       const ch = kernel.client.channels.cache.get(sug.channelId);
       if (sug.messageId && ch?.isTextBased()) {
         const msg = await (ch as any).messages.fetch(sug.messageId).catch(() => null);
         if (msg) {
-          const updated = new EmbedBuilder(msg.embeds[0]?.toJSON() ?? {}).setColor(colors[status] ?? 0x5865f2).addFields({ name: `${icons[status]} Trạng thái`, value: `${status}${note ? ` — ${note}` : ''}` });
-          await msg.edit({ embeds: [updated], components: [] });
+          const author = sug.anonymous ? null : await kernel.client.users.fetch(sug.authorId).catch(() => null);
+          const authorTag = author ? author.tag : '🔒 Ẩn danh';
+          const authorName = author ? author.username : 'Ẩn danh';
+          const authorAvatar = author ? author.displayAvatarURL({ extension: 'png' }) : undefined;
+
+          const embed = UIBuilders.createEmbed('💡 Đề Xuất Mới', sug.content)
+            .setColor(colors[status] ?? 0xf39c12)
+            .addFields(
+              { name: '👤 Người đề xuất', value: authorTag },
+              { name: `${icons[status]} Trạng thái`, value: `${status}${note ? ` — ${note}` : ''}` }
+            );
+
+          const buffer = await UIBuilders.convertToCanvasCard(embed, authorAvatar, authorName, interaction.guild?.name);
+          const file = new AttachmentBuilder(buffer, { name: 'suggestion.png' });
+          await msg.edit({ files: [file], attachments: [], components: [] });
         }
       }
-      await interaction.reply({ content: `✅ Đề xuất đã được cập nhật: **${status}**`, ephemeral: true });
+
+      const successEmbed = UIBuilders.createSuccessEmbed('Cập Nhật Thành Công', `✅ Đề xuất đã được cập nhật thành **${status}**`);
+      const successBuf = await UIBuilders.convertToCanvasCard(successEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const successFile = new AttachmentBuilder(successBuf, { name: 'success.png' });
+
+      await interaction.reply({ files: [successFile], ephemeral: true });
+
     } else if (sub === 'setup') {
       const channel = interaction.options.getChannel('channel', true);
       await import('../../../database/helpers').then(m => m.setModuleConfig(guildId, 'suggestions', { channelId: channel.id }));
-      await interaction.reply({ content: `✅ Kênh đề xuất → <#${channel.id}>`, ephemeral: true });
+
+      const successEmbed = UIBuilders.createSuccessEmbed('Thiết Lập Thành Công', `✅ Kênh đề xuất đã được cấu hình sang <#${channel.id}>`);
+      const successBuf = await UIBuilders.convertToCanvasCard(successEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+      const successFile = new AttachmentBuilder(successBuf, { name: 'success.png' });
+
+      await interaction.reply({ files: [successFile], ephemeral: true });
     }
   }
 }
