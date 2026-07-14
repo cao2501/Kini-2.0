@@ -307,30 +307,43 @@ export default class MarryCommand implements ICommand {
 			const now = new Date();
 			const lastLuv = marriage.lastLuvAt ? new Date(marriage.lastLuvAt) : null;
 
-			if (lastLuv && now.getTime() - lastLuv.getTime() < 24 * 3600 * 1000) {
-				const remainingHours = Math.ceil((24 * 3600 * 1000 - (now.getTime() - lastLuv.getTime())) / (3600 * 1000));
+			// Cooldown is 5 minutes and 20 seconds (320,000 ms)
+			const COOLDOWN_MS = 320 * 1000;
+			if (lastLuv && (now.getTime() - lastLuv.getTime()) < COOLDOWN_MS) {
+				const remainingMs = COOLDOWN_MS - (now.getTime() - lastLuv.getTime());
+				const remMin = Math.floor(remainingMs / 60000);
+				const remSec = Math.floor((remainingMs % 60000) / 1000);
 				return void interaction.editReply(
-					`⏳ Bạn đã farm điểm hôm nay rồi! Vui lòng quay lại sau **${remainingHours} giờ**.`,
+					`⏳ Bạn đã farm điểm gần đây rồi! Vui lòng quay lại sau **${remMin} phút ${remSec} giây**.`
 				);
 			}
 
+			// Check if this is the first luv of the calendar day (Asia/Ho_Chi_Minh)
+			const getGmt7DateString = (d) => d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+			const isFirstLuvToday = !lastLuv || getGmt7DateString(lastLuv) !== getGmt7DateString(now);
+
 			let streakIncremented = false;
 			let newStreak = marriage.streak;
+			let streakMsg = '';
 
-			if (lastLuv) {
-				const timeDiff = now.getTime() - lastLuv.getTime();
-				if (timeDiff <= 48 * 3600 * 1000) {
-					// Inside 48h -> keep & increment streak!
-					newStreak = marriage.streak + 1;
-					streakIncremented = true;
+			if (isFirstLuvToday) {
+				if (lastLuv) {
+					const timeDiff = now.getTime() - lastLuv.getTime();
+					if (timeDiff <= 48 * 3600 * 1000) {
+						newStreak = marriage.streak + 1;
+						streakIncremented = true;
+						streakMsg = `${newStreak} ngày 📈`;
+					} else {
+						newStreak = 1;
+						streakMsg = `1 ngày (Reset do quên) ⚠️`;
+					}
 				} else {
-					// Over 48h -> streak expired and resets to 1
 					newStreak = 1;
+					streakIncremented = true;
+					streakMsg = `1 ngày 📈`;
 				}
 			} else {
-				// First luv
-				newStreak = 1;
-				streakIncremented = true;
+				streakMsg = `${newStreak} ngày (Giữ nguyên)`;
 			}
 
 			const gainedLovePoints = Math.floor(Math.random() * 21) + 10; // 10-30 points
@@ -350,12 +363,12 @@ export default class MarryCommand implements ICommand {
 			const embed = new EmbedBuilder()
 				.setColor(0xff7bb5)
 				.setTitle('💖 Điểm Yêu Thương!')
-				.setDescription(`Bạn đã tương tác cùng <@${partnerId}> ngày hôm nay!`)
+				.setDescription(`Bạn đã tương tác cùng <@${partnerId}>!`)
 				.addFields(
 					{ name: '✨ Điểm Nhận Được', value: `+${gainedLovePoints} love points`, inline: true },
 					{
 						name: '🔥 Chuỗi Liên Tục (Streak)',
-						value: `${newStreak} ngày ${streakIncremented ? '📈' : '⚠️ Reset do quên'}`,
+						value: streakMsg,
 						inline: true,
 					},
 					{ name: '💝 Tổng Điểm', value: `${updatedLovePoints} điểm`, inline: true },
