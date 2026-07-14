@@ -71,7 +71,16 @@ export class MessageInteractionAdapter {
 
   // ── Options builder ────────────────────────────────────────────────────────
   private buildOptions() {
-    const getPositional = () => this.rawArgs[this.argCursor++] ?? null;
+    const getPositional = () => {
+      while (this.argCursor < this.rawArgs.length) {
+        const val = this.rawArgs[this.argCursor++];
+        if (val.match(/^<(@!?|@&|#)\d+>$/)) {
+          continue;
+        }
+        return val;
+      }
+      return null;
+    };
 
     const findNamed = (name: string) => {
       const entry = this.rawArgs.find(a => a.toLowerCase().startsWith(`${name.toLowerCase()}:`));
