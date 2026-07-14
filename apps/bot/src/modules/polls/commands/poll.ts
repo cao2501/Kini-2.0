@@ -59,7 +59,10 @@ export default class PollCommand implements ICommand {
         data: { guildId: interaction.guildId!, channelId: interaction.channelId, messageId: (msg as any).id, creatorId: interaction.user.id, question, options: JSON.stringify(optionsRaw), anonymous, multiChoice: multi, endsAt },
       });
 
-      // Update button IDs
+      // Update button IDs and embed footer with poll ID
+      const updatedEmbed = EmbedBuilder.from(embed)
+        .setFooter({ text: `ID: ${poll.id.slice(-6)} | ${anonymous ? '🔒 Ẩn danh' : '👀 Công khai'} | ${multi ? 'Nhiều lựa chọn' : 'Một lựa chọn'}${endsAt ? ` | Kết thúc <t:${Math.floor(endsAt.getTime()/1000)}:R>` : ''}` });
+
       const updatedRows: ActionRowBuilder<ButtonBuilder>[] = [];
       chunks.forEach((chunk, ci) => {
         const row = new ActionRowBuilder<ButtonBuilder>();
@@ -68,12 +71,40 @@ export default class PollCommand implements ICommand {
         });
         updatedRows.push(row);
       });
-      await (msg as any).edit({ content: ping || undefined, embeds: [embed], components: updatedRows });
+      await (msg as any).edit({ content: ping || undefined, embeds: [updatedEmbed], components: updatedRows });
     } else if (sub === 'end') {
       const id = interaction.options.getString('id', true);
       const poll = await kernel.db.poll.findFirst({ where: { guildId: interaction.guildId!, id: { endsWith: id }, status: 'ACTIVE' } });
       if (!poll) return void interaction.reply({ content: '❌ Không tìm thấy poll.', ephemeral: true });
       await kernel.db.poll.update({ where: { id: poll.id }, data: { status: 'ENDED' } });
+
+      // Update poll message immediately with results
+      const ch = await interaction.guild!.channels.fetch(poll.channelId).catch(() => null);
+      if (ch?.isTextBased()) {
+        const msg = await (ch as any).messages.fetch(poll.messageId).catch(() => null);
+        if (msg) {
+          const votes: Record<string, string[]> = JSON.parse(poll.votes ?? '{}');
+          const options: string[] = JSON.parse(poll.options ?? '[]');
+          const total = Object.values(votes).reduce((a, b) => a + b.length, 0);
+          const results = options.map((opt, i) => `${opt}: **${votes[i]?.length ?? 0}** phiếu (${total ? Math.floor((votes[i]?.length ?? 0) / total * 100) : 0}%)`).join('\n');
+
+          const embed = new EmbedBuilder()
+            .setTitle(`📊 Kết quả Poll: ${poll.question}`)
+            .setColor(0x3498db)
+            .setDescription(results)
+            .setFooter({ text: `ID: ${poll.id.slice(-6)} | Đã kết thúc` });
+
+          // Disable components
+          const rows = msg.components.map(row => {
+            const newRow = ActionRowBuilder.from(row as any);
+            newRow.components.forEach((c: any) => c.setDisabled(true));
+            return newRow;
+          });
+
+          await msg.edit({ embeds: [embed], components: rows as any }).catch(() => {});
+        }
+      }
+
       await interaction.reply({ content: '✅ Poll đã kết thúc.', ephemeral: true });
     }
   }
