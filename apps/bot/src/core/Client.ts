@@ -59,8 +59,21 @@ export class BotClient extends Client {
 
     try {
       logger.info(`Deploying ${commandData.length} slash commands...`);
+      
+      // Deploy globally (can take up to 1-2 hours to propagate on Discord client)
       await rest.put(Routes.applicationCommands(clientId), { body: commandData });
       logger.info(`✅ Deployed ${commandData.length} commands globally`);
+
+      // Deploy instantly to each guild the bot is in for instant updates/testing
+      const guilds = Array.from(this.guilds.cache.values());
+      for (const guild of guilds) {
+        try {
+          await rest.put(Routes.applicationGuildCommands(clientId, guild.id), { body: commandData });
+          logger.info(`✅ Deployed ${commandData.length} commands instantly to guild: ${guild.name} (${guild.id})`);
+        } catch (err) {
+          logger.warn(`Failed to deploy commands instantly to guild ${guild.name} (${guild.id}):`, err);
+        }
+      }
     } catch (error) {
       logger.error('Failed to deploy commands', { error });
     }
