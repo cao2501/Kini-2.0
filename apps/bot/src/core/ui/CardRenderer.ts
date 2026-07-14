@@ -1322,6 +1322,103 @@ export class CardRenderer {
     return canvas.toBuffer('image/png');
   }
 
+  /**
+   * 13. Draw VND Balance Card (Bank-themed card for real money balance)
+   */
+  public static async drawVndCard(
+    avatarUrl: string,
+    username: string,
+    balance: number,
+    guildName: string
+  ): Promise<Buffer> {
+    const width = 600;
+    const height = 250;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    // 1. Draw luxury dark green gradient background
+    const grad = ctx.createLinearGradient(0, 0, width, height);
+    grad.addColorStop(0, '#0a1d15');
+    grad.addColorStop(0.5, '#122c20');
+    grad.addColorStop(1, '#0e2319');
+    CanvasRenderer.drawRoundedRect(ctx, 0, 0, width, height, Theme.borderRadius.large, grad);
+
+    // 2. Draw subtle premium abstract lines pattern
+    ctx.strokeStyle = 'rgba(246, 196, 83, 0.04)';
+    ctx.lineWidth = 2;
+    for (let i = -100; i < width; i += 40) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + 150, height);
+      ctx.stroke();
+    }
+
+    // 3. Draw a gold-accented gradient curve on the right
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(width - 150, 0);
+    ctx.bezierCurveTo(width - 50, 80, width - 80, 180, width, height);
+    ctx.lineTo(width, 0);
+    ctx.closePath();
+    ctx.clip();
+    const goldGrad = ctx.createLinearGradient(width - 100, 0, width, height);
+    goldGrad.addColorStop(0, 'rgba(246, 196, 83, 0.15)');
+    goldGrad.addColorStop(1, 'rgba(246, 196, 83, 0.02)');
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(width - 150, 0, 150, height);
+    ctx.restore();
+
+    // 4. Draw card borders
+    CanvasRenderer.drawRoundedRect(ctx, 0, 0, width, height, Theme.borderRadius.large, undefined, 'rgba(246, 196, 83, 0.12)', 1.5);
+    CanvasRenderer.drawRoundedRect(ctx, 0, 0, 12, height, 6, Theme.colors.accentGold);
+
+    // 5. Draw chip-like icon / header
+    ctx.fillStyle = Theme.colors.accentGold;
+    ctx.font = 'bold 12px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+    ctx.fillText('KINI VIP PLATINUM', 40, 45);
+
+    // Draw card brand logo
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px "Outfit", sans-serif';
+    ctx.fillText('VND CARD', width - 140, 45);
+
+    // 6. Draw User Avatar and Info
+    const avatarX = 40;
+    const avatarY = 85;
+    const avatarSize = 90;
+    try {
+      await CanvasRenderer.drawCircularAvatar(ctx, avatarUrl, avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 'rgba(246, 196, 83, 0.3)', 3);
+    } catch (err) {
+      console.error('Failed to load avatar in drawVndCard:', err);
+    }
+
+    // 7. Draw Username
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
+    ctx.fillText(username, avatarX + avatarSize + 20, avatarY + 30);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = 'normal 13px "Segoe UI", Arial, sans-serif';
+    ctx.fillText('CHỦ SỞ HỮU THẺ', avatarX + avatarSize + 20, avatarY + 50);
+
+    // 8. Draw VND Balance
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = 'normal 13px "Segoe UI", Arial, sans-serif';
+    ctx.fillText('SỐ DƯ KHẢ DỤNG', avatarX + avatarSize + 20, avatarY + 80);
+
+    const formattedVnd = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(balance);
+    ctx.fillStyle = Theme.colors.accentGold;
+    ctx.font = 'bold 30px "Outfit", "Segoe UI", sans-serif';
+    ctx.fillText(formattedVnd, avatarX + avatarSize + 20, avatarY + 115);
+
+    // 9. Draw Footer
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.font = '11px "Segoe UI", Arial, sans-serif';
+    ctx.fillText(guildName.toUpperCase() + ' • KINI 2.0 ENTERPRISE', 40, height - 25);
+
+    return canvas.toBuffer('image/png');
+  }
+
   private static wrapText(
     ctx: CanvasRenderingContext2D,
     text: string,
