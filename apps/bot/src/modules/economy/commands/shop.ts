@@ -73,6 +73,10 @@ export default class ShopCommand implements ICommand {
         { name: '📦 Vật phẩm thường', value: 'GENERAL' },
         { name: '💍 Nhẫn cưới', value: 'RING' },
       ))
+      .addStringOption(o => o.setName('currency').setDescription('Loại tiền tệ (mặc định: ECO)').addChoices(
+        { name: '💰 Coins (Eco)', value: 'ECO' },
+        { name: '💳 VNĐ (Nạp)', value: 'VND' },
+      ))
       .addRoleOption(o => o.setName('role').setDescription('Role thưởng (nếu loại = Role)'))
       .addStringOption(o => o.setName('description').setDescription('Mô tả sản phẩm'))
       .addIntegerOption(o => o.setName('stock').setDescription('Số lượng (0 = không giới hạn)'))
@@ -286,7 +290,7 @@ export default class ShopCommand implements ICommand {
       const price = interaction.options.getInteger('price', true);
       const type = interaction.options.getString('type', true);
       const category = interaction.options.getString('category') ?? 'GENERAL';
-      const currency = category === 'RING' ? 'VND' : 'ECO';
+      const currency = interaction.options.getString('currency') ?? 'ECO';
       const role = interaction.options.getRole('role');
       const description = interaction.options.getString('description');
       const stockOpt = interaction.options.getInteger('stock');
