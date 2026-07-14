@@ -9,6 +9,9 @@ import { prisma } from '../database/PrismaClient';
 import { AttachmentBuilder, PermissionFlagsBits, GuildMember, Collection } from 'discord.js';
 import { getModuleConfig } from '../database/helpers';
 import { UIBuilders } from './ui/UIBuilders';
+import { GlobalFonts } from '@napi-rs/canvas';
+import path from 'path';
+import fs from 'fs';
 
 export class Kernel {
   public readonly client: BotClient;
@@ -35,6 +38,19 @@ export class Kernel {
     logger.info('═══════════════════════════════════════════');
     logger.info('   🤖 Enterprise Discord Bot — Starting    ');
     logger.info('═══════════════════════════════════════════');
+
+    // Register custom fonts (Roboto font registered as 'Segoe UI' to fix spacing on Linux)
+    const fontsPath = path.join(__dirname, '..', '..', 'fonts');
+    const robotoRegular = path.join(fontsPath, 'Roboto-Regular.ttf');
+    const robotoBold = path.join(fontsPath, 'Roboto-Bold.ttf');
+    if (fs.existsSync(robotoRegular)) {
+      GlobalFonts.registerFromPath(robotoRegular, 'Segoe UI');
+      logger.info('🎨 Registered custom font Segoe UI (Regular) from Roboto');
+    }
+    if (fs.existsSync(robotoBold)) {
+      GlobalFonts.registerFromPath(robotoBold, 'Segoe UI');
+      logger.info('🎨 Registered custom font Segoe UI (Bold) from Roboto');
+    }
 
     // 1. Connect to database
     logger.info('📦 Connecting to database...');
