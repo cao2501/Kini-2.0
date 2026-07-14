@@ -126,53 +126,39 @@ class MusicManager {
     try {
       // Validate query
       const spType = play.sp_validate(query);
-      if (spType === 'track') {
-        const authed = await this.ensureSpotifyAuth();
-        if (!authed) {
-          throw new Error('Spotify credentials are not configured. Please add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to the .env file.');
-        }
-        const info = await play.spotify(query) as any;
-        track = {
-          title: `${info.name} - ${info.artists.map((a: any) => a.name).join(', ')}`,
-          url: info.url, // Store Spotify URL, search/resolve it when starting stream
-          duration: '00:00', // Resolved lazily when streaming
-          requester,
-          thumbnail: info.thumbnail?.url
-        };
-      } else if (spType === 'album' || spType === 'playlist') {
-        const authed = await this.ensureSpotifyAuth();
-        if (!authed) {
-          throw new Error('Spotify credentials are not configured. Please add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to the .env file.');
-        }
-        const info = await play.spotify(query) as any;
-        const spotifyTracks = await info.all_tracks();
+      if (spType === 'track' || spType === 'album' || spType === 'playlist') {
+        const { getTracks } = require('spotify-url-info')(fetch);
+        const spotifyTracks = await getTracks(query);
         if (!spotifyTracks || spotifyTracks.length === 0) {
           return null;
         }
 
         const firstTrack = spotifyTracks[0];
+        const mins = Math.floor((firstTrack.duration || 0) / 60000);
+        const secs = Math.floor(((firstTrack.duration || 0) % 60000) / 1000);
+        const durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
         track = {
-          title: `${firstTrack.name} - ${firstTrack.artists.map((a: any) => a.name).join(', ')}`,
-          url: firstTrack.url,
-          duration: '00:00',
+          title: `${firstTrack.name} - ${firstTrack.artist}`,
+          url: `https://open.spotify.com/track/${firstTrack.uri.split(':').pop()}`,
+          duration: durationStr,
           requester,
-          thumbnail: firstTrack.thumbnail?.url || info.thumbnail?.url,
-          playlist: {
-            name: info.name,
-            count: spotifyTracks.length
-          }
         };
 
-        // Push the rest of the tracks asynchronously to the queue
-        for (let i = 1; i < spotifyTracks.length; i++) {
-          const t = spotifyTracks[i];
-          queue.tracks.push({
-            title: `${t.name} - ${t.artists.map((a: any) => a.name).join(', ')}`,
-            url: t.url,
-            duration: '00:00',
-            requester,
-            thumbnail: t.thumbnail?.url || info.thumbnail?.url
-          });
+        if (spType === 'album' || spType === 'playlist') {
+          // Push the rest of the tracks asynchronously to the queue
+          for (let i = 1; i < spotifyTracks.length; i++) {
+            const t = spotifyTracks[i];
+            const tMins = Math.floor((t.duration || 0) / 60000);
+            const tSecs = Math.floor(((t.duration || 0) % 60000) / 1000);
+            const tDurationStr = `${tMins.toString().padStart(2, '0')}:${tSecs.toString().padStart(2, '0')}`;
+            queue.tracks.push({
+              title: `${t.name} - ${t.artist}`,
+              url: `https://open.spotify.com/track/${t.uri.split(':').pop()}`,
+              duration: tDurationStr,
+              requester,
+            });
+          }
         }
       } else if (query.includes('soundcloud.com')) {
         await this.ensureSoundCloudAuth();
