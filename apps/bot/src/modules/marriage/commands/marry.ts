@@ -87,13 +87,15 @@ export default class MarryCommand implements ICommand {
 			s
 				.setName('thumbnail')
 				.setDescription('🖼️ Cài đặt ảnh nhỏ cho embed profile')
-				.addStringOption((o) => o.setName('url').setDescription('URL hình ảnh').setRequired(true)),
+				.addStringOption((o) => o.setName('url').setDescription('URL hình ảnh').setRequired(false))
+				.addAttachmentOption((o) => o.setName('file').setDescription('Tải lên ảnh từ máy (tùy chọn)')),
 		)
 		.addSubcommand((s) =>
 			s
 				.setName('image')
 				.setDescription('🖼️ Cài đặt ảnh lớn cho embed profile')
-				.addStringOption((o) => o.setName('url').setDescription('URL hình ảnh').setRequired(true)),
+				.addStringOption((o) => o.setName('url').setDescription('URL hình ảnh').setRequired(false))
+				.addAttachmentOption((o) => o.setName('file').setDescription('Tải lên ảnh từ máy (tùy chọn)')),
 		)
 		.addSubcommand((s) =>
 			s
@@ -376,28 +378,40 @@ export default class MarryCommand implements ICommand {
 			const marriage = await getMarriage(kernel, guildId, userId);
 			if (!marriage) return void interaction.editReply('❌ Bạn cần kết hôn để thực hiện lệnh này.');
 
-			const url = interaction.options.getString('url', true);
-			if (!url.startsWith('http://') && !url.startsWith('https://')) {
+			const url = interaction.options.getString('url');
+			const file = interaction.options.getAttachment('file');
+			if (!url && !file) {
+				return void interaction.editReply('❌ Bạn cần cung cấp URL hình ảnh hoặc tải lên tệp tin từ máy!');
+			}
+			const finalUrl = file ? file.url : url;
+
+			if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
 				return void interaction.editReply('❌ URL ảnh không hợp lệ!');
 			}
 
 			await kernel.db.marriage.update({
 				where: { id: marriage.id },
-				data: { thumbnail: url },
+				data: { thumbnail: finalUrl },
 			});
 			await interaction.editReply('✅ Đã cập nhật ảnh nhỏ (thumbnail) đám cưới!');
 		} else if (sub === 'image') {
 			const marriage = await getMarriage(kernel, guildId, userId);
 			if (!marriage) return void interaction.editReply('❌ Bạn cần kết hôn để thực hiện lệnh này.');
 
-			const url = interaction.options.getString('url', true);
-			if (!url.startsWith('http://') && !url.startsWith('https://')) {
+			const url = interaction.options.getString('url');
+			const file = interaction.options.getAttachment('file');
+			if (!url && !file) {
+				return void interaction.editReply('❌ Bạn cần cung cấp URL hình ảnh hoặc tải lên tệp tin từ máy!');
+			}
+			const finalUrl = file ? file.url : url;
+
+			if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
 				return void interaction.editReply('❌ URL ảnh không hợp lệ!');
 			}
 
 			await kernel.db.marriage.update({
 				where: { id: marriage.id },
-				data: { image: url },
+				data: { image: finalUrl },
 			});
 			await interaction.editReply('✅ Đã cập nhật ảnh lớn đám cưới!');
 		} else if (sub === 'color') {

@@ -81,6 +81,7 @@ export default class ShopCommand implements ICommand {
       .addStringOption(o => o.setName('description').setDescription('Mô tả sản phẩm'))
       .addIntegerOption(o => o.setName('stock').setDescription('Số lượng (0 = không giới hạn)'))
       .addStringOption(o => o.setName('image').setDescription('URL hình ảnh sản phẩm'))
+      .addAttachmentOption(o => o.setName('file').setDescription('Tải lên ảnh từ máy (tùy chọn)'))
     )
     .addSubcommand(s => s.setName('remove').setDescription('[Admin] Xóa sản phẩm')
       .addStringOption(o => o.setName('name').setDescription('Tên sản phẩm').setRequired(true))
@@ -95,6 +96,7 @@ export default class ShopCommand implements ICommand {
       .addIntegerOption(o => o.setName('stock').setDescription('Số lượng mới (0 = không giới hạn)'))
       .addBooleanOption(o => o.setName('enabled').setDescription('Bật/Tắt'))
       .addStringOption(o => o.setName('image').setDescription('URL hình ảnh mới (hoặc "none" để xóa)'))
+      .addAttachmentOption(o => o.setName('file').setDescription('Tải lên ảnh mới từ máy (tùy chọn)'))
       .addStringOption(o => o.setName('description').setDescription('Mô tả/Giới thiệu sản phẩm mới (hoặc "none" để xóa)'))
       .addStringOption(o => o.setName('emoji').setDescription('Emoji tùy chỉnh hiển thị bên trái tên (hoặc "none" để xóa)'))
     );
@@ -296,7 +298,9 @@ export default class ShopCommand implements ICommand {
       const description = interaction.options.getString('description');
       const stockOpt = interaction.options.getInteger('stock');
       const stock = (stockOpt && stockOpt > 0) ? stockOpt : null;
-      const imageUrl = interaction.options.getString('image');
+      const imageString = interaction.options.getString('image');
+      const imageFile = interaction.options.getAttachment('file');
+      const imageUrl = imageFile ? imageFile.url : imageString;
 
       const existing = await kernel.db.shopItem.findFirst({ where: { guildId, name } });
       if (existing) return void interaction.editReply({ content: `❌ Sản phẩm **${name}** đã tồn tại.` });
@@ -351,7 +355,9 @@ export default class ShopCommand implements ICommand {
       const price = interaction.options.getInteger('price');
       const stockOpt = interaction.options.getInteger('stock');
       const enabled = interaction.options.getBoolean('enabled');
-      const image = interaction.options.getString('image');
+      const imageString = interaction.options.getString('image');
+      const imageFile = interaction.options.getAttachment('file');
+      const image = imageFile ? imageFile.url : imageString;
       const description = interaction.options.getString('description');
       const emoji = interaction.options.getString('emoji');
 
