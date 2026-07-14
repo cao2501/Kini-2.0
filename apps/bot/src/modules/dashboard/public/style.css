@@ -1265,6 +1265,92 @@ input:checked + .slider:before {
   border-radius: 0 9px 9px 0 !important;
 }
 
+/* Permissions tab custom styles */
+.permissions-columns-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 25px;
+  margin-top: 15px;
+}
+
+@media (max-width: 768px) {
+  .permissions-columns-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.perm-column {
+  padding: 20px;
+  background: rgba(13, 17, 28, 0.4);
+  border-radius: 12px;
+}
+
+.roles-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 350px;
+  overflow-y: auto;
+  padding-right: 5px;
+  margin-top: 10px;
+}
+
+/* Custom scrollbar for role list */
+.roles-checkbox-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.roles-checkbox-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 10px;
+}
+
+.roles-checkbox-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.role-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.role-checkbox-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.role-checkbox-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-gold);
+  cursor: pointer;
+}
+
+.role-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #f1f5f9;
+}
+
+.role-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+}
+
 
 
 

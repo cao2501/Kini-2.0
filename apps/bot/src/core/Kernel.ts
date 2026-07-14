@@ -6,6 +6,9 @@ import { Scheduler, scheduler } from './scheduler/Scheduler';
 import { ServiceRegistry, registry } from './registry/ServiceRegistry';
 import { logger } from './logger/Logger';
 import { prisma } from '../database/PrismaClient';
+import { AttachmentBuilder, PermissionFlagsBits, GuildMember } from 'discord.js';
+import { getModuleConfig } from '../database/helpers';
+import { UIBuilders } from './ui/UIBuilders';
 
 export class Kernel {
   public readonly client: BotClient;
@@ -88,6 +91,39 @@ export class Kernel {
 
       const command = this.client.commands.get(interaction.commandName);
       if (!command) return;
+
+      // Custom command permissions check
+      const isOwner = this.ownerIds.includes(interaction.user.id);
+      const isAdmin = (interaction.member as GuildMember).permissions?.has(PermissionFlagsBits.Administrator);
+      
+      if (!isOwner && !isAdmin && interaction.guildId) {
+        try {
+          const { config } = await getModuleConfig<any>(interaction.guildId, 'command_permissions');
+          const rules = config.permissions?.[interaction.commandName];
+          if (rules) {
+            const member = interaction.member as GuildMember;
+            const memberRoles = member.roles.cache.map(r => r.id);
+            const allowed = rules.allowedRoles || [];
+            const denied = rules.deniedRoles || [];
+
+            if (denied.length > 0 && memberRoles.some(rId => denied.includes(rId))) {
+              const errorEmbed = UIBuilders.createErrorEmbed('Từ Chối Quyền Hạn', '❌ Vai trò của bạn bị cấm sử dụng lệnh này.');
+              const buffer = await UIBuilders.convertToCanvasCard(errorEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+              const file = new AttachmentBuilder(buffer, { name: 'error.png' });
+              return void interaction.reply({ files: [file], ephemeral: true });
+            }
+
+            if (allowed.length > 0 && !memberRoles.some(rId => allowed.includes(rId))) {
+              const errorEmbed = UIBuilders.createErrorEmbed('Từ Chối Quyền Hạn', '❌ Bạn không có vai trò phù hợp để sử dụng lệnh này.');
+              const buffer = await UIBuilders.convertToCanvasCard(errorEmbed, interaction.user.displayAvatarURL({ extension: 'png' }), interaction.user.username, interaction.guild?.name);
+              const file = new AttachmentBuilder(buffer, { name: 'error.png' });
+              return void interaction.reply({ files: [file], ephemeral: true });
+            }
+          }
+        } catch (err) {
+          logger.error('Failed to verify command permissions:', err);
+        }
+      }
 
       // Maintenance mode check (non-owners blocked)
       if (this.cache.get<boolean>('maintenance_mode') && !this.ownerIds.includes(interaction.user.id)) {

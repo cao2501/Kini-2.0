@@ -76,6 +76,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       loadModules(guildId);
     } else if (activeTab === 'prefix') {
       loadPrefixSettings(guildId);
+    } else if (activeTab === 'permissions') {
+      loadPermissionsSettings(guildId);
     }
   }
 
@@ -537,5 +539,170 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => {
       copyBtn.innerText = originalText;
     }, 2000);
+  });
+
+  // ── 13. PERMISSIONS TAB LOGIC ──────────────────────────────────────────────
+  let guildRoles = [];
+  let allCommands = [];
+  let commandPermissions = {}; // commandName -> { allowedRoles: [], deniedRoles: [] }
+
+  async function loadPermissionsSettings(guildId) {
+    const selectMenu = document.getElementById('perm-command-select');
+    selectMenu.innerHTML = '<option value="">-- Đang tải... --</option>';
+    document.getElementById('permission-settings-area').style.display = 'none';
+
+    try {
+      // 1. Fetch roles
+      const rolesRes = await fetch(`/api/guilds/${guildId}/roles`);
+      guildRoles = await rolesRes.json();
+
+      // 2. Fetch commands
+      const cmdsRes = await fetch(`/api/guilds/${guildId}/commands`);
+      allCommands = await cmdsRes.json();
+
+      // 3. Fetch current permissions
+      const permsRes = await fetch(`/api/guilds/${guildId}/permissions`);
+      commandPermissions = await permsRes.json();
+
+      // Populate command dropdown
+      selectMenu.innerHTML = '<option value="">-- Chọn lệnh --</option>';
+      allCommands.forEach(cmd => {
+        const opt = document.createElement('option');
+        opt.value = cmd;
+        opt.textContent = `/${cmd}`;
+        selectMenu.appendChild(opt);
+      });
+    } catch (err) {
+      console.error(err);
+      selectMenu.innerHTML = '<option value="">-- Lỗi tải dữ liệu --</option>';
+    }
+  }
+
+  // Handle command change selection
+  const permCmdSelect = document.getElementById('perm-command-select');
+  permCmdSelect.addEventListener('change', () => {
+    const commandName = permCmdSelect.value;
+    if (!commandName) {
+      document.getElementById('permission-settings-area').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('perm-editing-command-name').textContent = commandName;
+    
+    // Render the roles pickers for this command
+    renderPermissionsRolesPickers(commandName);
+    
+    document.getElementById('permission-settings-area').style.display = 'block';
+  });
+
+  function renderPermissionsRolesPickers(commandName) {
+    const rules = commandPermissions[commandName] || { allowedRoles: [], deniedRoles: [] };
+    const allowedList = document.getElementById('allowed-roles-list');
+    const deniedList = document.getElementById('denied-roles-list');
+
+    allowedList.innerHTML = '';
+    deniedList.innerHTML = '';
+
+    if (guildRoles.length === 0) {
+      allowedList.innerHTML = '<p class="placeholder-text">Không tìm thấy vai trò nào.</p>';
+      deniedList.innerHTML = '<p class="placeholder-text">Không tìm thấy vai trò nào.</p>';
+      return;
+    }
+
+    guildRoles.forEach(role => {
+      // Color dot markup
+      const dotHtml = role.color ? `<span class="role-color-dot" style="color: ${role.color}; background-color: ${role.color};"></span>` : '';
+
+      // 1. Allowed roles checkbox
+      const isAllowed = rules.allowedRoles?.includes(role.id) || false;
+      const allowedItem = document.createElement('label');
+      allowedItem.className = 'role-checkbox-item';
+      allowedItem.innerHTML = `
+        <input type="checkbox" data-role-id="${role.id}" class="allowed-checkbox" ${isAllowed ? 'checked' : ''} />
+        <span class="role-checkbox-label">
+          ${dotHtml}
+          ${role.name}
+        </span>
+      `;
+      allowedList.appendChild(allowedItem);
+
+      // 2. Denied roles checkbox
+      const isDenied = rules.deniedRoles?.includes(role.id) || false;
+      const deniedItem = document.createElement('label');
+      deniedItem.className = 'role-checkbox-item';
+      deniedItem.innerHTML = `
+        <input type="checkbox" data-role-id="${role.id}" class="denied-checkbox" ${isDenied ? 'checked' : ''} />
+        <span class="role-checkbox-label">
+          ${dotHtml}
+          ${role.name}
+        </span>
+      `;
+      deniedList.appendChild(deniedItem);
+
+      // Mutual exclusion check: ticking Allowed should untick Denied, and vice versa!
+      allowedItem.querySelector('input').addEventListener('change', (e) => {
+        if (e.target.checked) {
+          deniedItem.querySelector('input').checked = false;
+        }
+      });
+      deniedItem.querySelector('input').addEventListener('change', (e) => {
+        if (e.target.checked) {
+          allowedItem.querySelector('input').checked = false;
+        }
+      });
+    });
+  }
+
+  // Handle save permissions
+  document.getElementById('btn-save-permissions').addEventListener('click', async () => {
+    const commandName = permCmdSelect.value;
+    if (!commandName || !activeGuildId) return;
+
+    const saveBtn = document.getElementById('btn-save-permissions');
+    const msgSpan = document.getElementById('permissions-status-msg');
+
+    saveBtn.disabled = true;
+    msgSpan.textContent = '🔄 Đang lưu cấu hình quyền...';
+    msgSpan.className = 'status-msg';
+
+    // Build the lists of checked roles
+    const allowedRoles = [];
+    document.querySelectorAll('.allowed-checkbox').forEach(cb => {
+      if (cb.checked) allowedRoles.push(cb.dataset.roleId);
+    });
+
+    const deniedRoles = [];
+    document.querySelectorAll('.denied-checkbox').forEach(cb => {
+      if (cb.checked) deniedRoles.push(cb.dataset.roleId);
+    });
+
+    // Update local object copy
+    commandPermissions[commandName] = { allowedRoles, deniedRoles };
+
+    try {
+      const res = await fetch(`/api/guilds/${activeGuildId}/permissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions: commandPermissions })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        msgSpan.textContent = '✅ Đã lưu cấu hình quyền thành công!';
+        msgSpan.className = 'status-msg ok';
+      } else {
+        msgSpan.textContent = `❌ Lỗi: ${data.error || 'Không rõ nguyên nhân'}`;
+        msgSpan.className = 'status-msg err';
+      }
+    } catch (err) {
+      msgSpan.textContent = '❌ Lỗi kết nối mạng.';
+      msgSpan.className = 'status-msg err';
+    } finally {
+      saveBtn.disabled = false;
+      setTimeout(() => {
+        msgSpan.textContent = '';
+        msgSpan.className = 'status-msg';
+      }, 4000);
+    }
   });
 });

@@ -377,6 +377,61 @@ export class ExpressServer {
       res.json({ success: true, maintenanceMode: !current });
     });
 
+    // GET: get all guild roles
+    this.app.get('/api/guilds/:id/roles', requireAuth, async (req, res) => {
+      const guildId = req.params.id;
+      const guild = this.kernel.client.guilds.cache.get(guildId);
+      if (!guild) return res.status(404).json({ error: 'Guild not found' });
+
+      try {
+        await guild.roles.fetch().catch(() => {});
+        const roles = guild.roles.cache
+          .filter(r => r.name !== '@everyone' && !r.managed)
+          .map(r => ({
+            id: r.id,
+            name: r.name,
+            color: r.hexColor
+          }));
+        res.json(roles);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // GET: get all slash commands
+    this.app.get('/api/guilds/:id/commands', requireAuth, (req, res) => {
+      const commands = Array.from(this.kernel.client.commands.keys()).sort();
+      res.json(commands);
+    });
+
+    // GET: get permission rules
+    this.app.get('/api/guilds/:id/permissions', requireAuth, async (req, res) => {
+      const guildId = req.params.id;
+      try {
+        const { config } = await getModuleConfig<any>(guildId, 'command_permissions');
+        res.json(config.permissions || {});
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // POST: save permission rules
+    this.app.post('/api/guilds/:id/permissions', requireAuth, async (req, res) => {
+      const guildId = req.params.id;
+      const { permissions } = req.body;
+
+      if (!permissions || typeof permissions !== 'object') {
+        return res.status(400).json({ error: 'Permissions object required' });
+      }
+
+      try {
+        await setModuleConfig(guildId, 'command_permissions', { permissions }, true);
+        res.json({ success: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
     // ── PREFIX / ALIAS API ────────────────────────────────────────────────────
 
     // GET: global prefix + alias list + available commands with subcommands
