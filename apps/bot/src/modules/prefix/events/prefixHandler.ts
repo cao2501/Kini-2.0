@@ -47,6 +47,9 @@ export default class PrefixHandlerEvent implements IEvent<'messageCreate'> {
           caption: { command: 'marry', subcommand: 'caption' },
           color: { command: 'marry', subcommand: 'color' },
           luv: { command: 'marry', subcommand: 'luv' },
+          inventory: { command: 'inventory', subcommand: 'view' },
+          inv: { command: 'inventory', subcommand: 'view' },
+          give: { command: 'inventory', subcommand: 'give' },
         };
         mapping = fallbacks[aliasKey];
       }
