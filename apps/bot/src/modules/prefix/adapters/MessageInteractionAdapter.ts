@@ -25,6 +25,7 @@ export class MessageInteractionAdapter {
 
   private readonly message: Message;
   private readonly subcommand: string | null;
+  private readonly subcommandGroup: string | null = null;
   private readonly rawArgs: string[];
 
   // State
@@ -34,7 +35,21 @@ export class MessageInteractionAdapter {
 
   constructor(message: Message, subcommand: string | null, args: string[]) {
     this.message = message;
-    this.subcommand = subcommand;
+    
+    if (subcommand) {
+      const parts = subcommand.trim().split(/\s+/);
+      if (parts.length > 1) {
+        this.subcommandGroup = parts[0];
+        this.subcommand = parts[1];
+      } else {
+        this.subcommandGroup = null;
+        this.subcommand = parts[0];
+      }
+    } else {
+      this.subcommandGroup = null;
+      this.subcommand = null;
+    }
+
     this.rawArgs = args;
 
     this.guildId = message.guildId!;
@@ -66,6 +81,10 @@ export class MessageInteractionAdapter {
     return {
       getSubcommand: (_required?: boolean): string => {
         return this.subcommand ?? '';
+      },
+
+      getSubcommandGroup: (_required?: boolean): string | null => {
+        return this.subcommandGroup;
       },
 
       getString: (name: string, required = false): string | null => {

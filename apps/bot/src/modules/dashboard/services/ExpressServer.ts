@@ -567,7 +567,7 @@ export class ExpressServer {
 							const buffer = await UIBuilders.convertToCanvasCard(publicEmbed, avatar, username, 'KINI BANKING');
 							const file = new AttachmentBuilder(buffer, { name: 'deposit-success.png' });
 							await (channel as any)
-								.send({ content: `🎉 **Nạp tiền thành công!** **@${username}**`, files: [file] })
+								.send({ content: `🎉 **Nạp tiền thành công!** **<@${userId}>**`, files: [file] })
 								.catch(() => {});
 						}
 					} catch (chErr) {
