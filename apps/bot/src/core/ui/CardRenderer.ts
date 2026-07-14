@@ -172,7 +172,7 @@ export class CardRenderer {
 
     ctx.fillStyle = Theme.colors.info;
     ctx.font = 'bold 20px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText(`🏆 #${rank}`, 300, 142);
+    ctx.fillText(`HẠNG #${rank}`, 300, 142);
 
     // XP text (align right)
     const ratio = Math.min(1, currentXp / (nextXp || 1));
@@ -223,17 +223,17 @@ export class CardRenderer {
 
     // Large Title with Emoji
     const typeLabels: Record<string, string> = {
-      xp: '💬 Cấp Độ Chat (Tất cả)',
-      coins: '💰 Tài Sản Coins',
-      voice: '🎙️ Thời Gian Voice (Tất cả)',
-      chat_weekly: '💬 Top Chat Tuần',
-      chat_monthly: '💬 Top Chat Tháng',
-      voice_weekly: '🎙️ Top Voice Tuần',
-      voice_monthly: '🎙️ Top Voice Tháng',
+      xp: 'Cấp Độ Chat (Tất cả)',
+      coins: 'Tài Sản Coins',
+      voice: 'Thời Gian Voice (Tất cả)',
+      chat_weekly: 'Top Chat Tuần',
+      chat_monthly: 'Top Chat Tháng',
+      voice_weekly: 'Top Voice Tuần',
+      voice_monthly: 'Top Voice Tháng',
     };
     ctx.fillStyle = Theme.colors.textPrimary;
     ctx.font = 'bold 42px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText(typeLabels[type] ?? '🏆 Leaderboard', 40, 110);
+    ctx.fillText(typeLabels[type] ?? 'Leaderboard', 40, 110);
 
     // Draw Podium (Top 3)
     const top3 = members.slice(0, 3);
@@ -268,10 +268,28 @@ export class CardRenderer {
       // Draw Crown above Rank 1
       if (p.rankVal === 1) {
         ctx.fillStyle = Theme.colors.accentGold;
-        ctx.font = '28px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('👑', avatarX, p.y - 12);
-        ctx.textAlign = 'left';
+        ctx.beginPath();
+        const cx = avatarX;
+        const cy = p.y - 10;
+        ctx.moveTo(cx - 20, cy + 12);
+        ctx.lineTo(cx - 25, cy - 8);  // left peak
+        ctx.lineTo(cx - 10, cy + 2);  // left valley
+        ctx.lineTo(cx, cy - 18);      // center peak
+        ctx.lineTo(cx + 10, cy + 2);  // right valley
+        ctx.lineTo(cx + 25, cy - 8);  // right peak
+        ctx.lineTo(cx + 20, cy + 12); // bottom right
+        ctx.closePath();
+        ctx.fill();
+
+        // Tips circles
+        ctx.fillStyle = '#FFE185';
+        ctx.beginPath();
+        ctx.arc(cx - 25, cy - 8, 3, 0, Math.PI * 2);
+        ctx.moveTo(cx, cy - 18);
+        ctx.arc(cx, cy - 18, 3, 0, Math.PI * 2);
+        ctx.moveTo(cx + 25, cy - 8);
+        ctx.arc(cx + 25, cy - 8, 3, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       // Draw Avatar
@@ -353,7 +371,7 @@ export class CardRenderer {
     if (callerRank) {
       ctx.fillStyle = Theme.colors.accentGold;
       ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-      ctx.fillText('🏆 XẾP HẠNG CỦA BẠN', 40, listY + 30);
+      ctx.fillText('XẾP HẠNG CỦA BẠN', 40, listY + 30);
 
       const callerY = listY + 50;
       const itemX = 40;
@@ -477,8 +495,8 @@ export class CardRenderer {
     ctx.fillStyle = Theme.colors.textSecondary;
     const discDate = joinedDiscord.toLocaleDateString('vi-VN');
     const servDate = joinedServer.toLocaleDateString('vi-VN');
-    ctx.fillText(`🤖 Discord: ${discDate}`, 560, 80);
-    ctx.fillText(`🏠 Server:  ${servDate}`, 560, 105);
+    ctx.fillText(`Discord: ${discDate}`, 560, 80);
+    ctx.fillText(`Server:  ${servDate}`, 560, 105);
 
     // Middle Stats Cards
     const cardY = 150;
@@ -489,7 +507,7 @@ export class CardRenderer {
     CanvasRenderer.drawRoundedRect(ctx, 40, cardY, cardW, cardH, Theme.borderRadius.medium, Theme.colors.card);
     ctx.fillStyle = Theme.colors.textSecondary;
     ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('💬 HOẠT ĐỘNG CHAT', 60, cardY + 35);
+    ctx.fillText('HOẠT ĐỘNG CHAT', 60, cardY + 35);
 
     ctx.fillStyle = Theme.colors.accentGold;
     ctx.font = 'bold 36px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
@@ -512,7 +530,7 @@ export class CardRenderer {
     CanvasRenderer.drawRoundedRect(ctx, 520, cardY, cardW, cardH, Theme.borderRadius.medium, Theme.colors.card);
     ctx.fillStyle = Theme.colors.textSecondary;
     ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('🔊 HOẠT ĐỘNG VOICE', 540, cardY + 35);
+    ctx.fillText('HOẠT ĐỘNG VOICE', 540, cardY + 35);
 
     ctx.fillStyle = Theme.colors.accentGold;
     ctx.font = 'bold 36px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
@@ -538,7 +556,7 @@ export class CardRenderer {
     // Ranks Section
     ctx.fillStyle = Theme.colors.textMuted;
     ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('🏆 XẾP HẠNG SERVER', 40, botY + 25);
+    ctx.fillText('XẾP HẠNG SERVER', 40, botY + 25);
 
     const miniW = 210;
     const miniH = 120;
@@ -547,7 +565,7 @@ export class CardRenderer {
     CanvasRenderer.drawRoundedRect(ctx, 40, botY + 45, miniW, miniH, Theme.borderRadius.small, Theme.colors.card);
     ctx.fillStyle = Theme.colors.textSecondary;
     ctx.font = '14px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('💬 Hạng Chat', 60, botY + 75);
+    ctx.fillText('Hạng Chat', 60, botY + 75);
     ctx.fillStyle = Theme.colors.accentGold;
     ctx.font = 'bold 28px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
     ctx.fillText(`#${stats.chatRank}`, 60, botY + 115);
@@ -556,7 +574,7 @@ export class CardRenderer {
     CanvasRenderer.drawRoundedRect(ctx, 270, botY + 45, miniW, miniH, Theme.borderRadius.small, Theme.colors.card);
     ctx.fillStyle = Theme.colors.textSecondary;
     ctx.font = '14px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('🔊 Hạng Voice', 290, botY + 75);
+    ctx.fillText('Hạng Voice', 290, botY + 75);
     ctx.fillStyle = Theme.colors.accentGold;
     ctx.font = 'bold 28px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
     ctx.fillText(`#${stats.voiceRank}`, 290, botY + 115);
@@ -564,7 +582,7 @@ export class CardRenderer {
     // Top Channels Section
     ctx.fillStyle = Theme.colors.textMuted;
     ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('🗣️ TOP KÊNH TƯƠNG TÁC', 520, botY + 25);
+    ctx.fillText('TOP KÊNH TƯƠNG TÁC', 520, botY + 25);
 
     const rowW = 440;
     const rowH = 55;
