@@ -756,7 +756,7 @@ export class CardRenderer {
    */
   public static async drawShopListCard(
     guildName: string,
-    items: Array<{ name: string; price: number; type: string; stock: number | null; description: string | null; currency?: string }>
+    items: Array<{ name: string; price: number; type: string; stock: number | null; description: string | null; currency?: string; emoji?: string | null }>
   ): Promise<Buffer> {
     const width = 800;
     const height = Math.max(300, 160 + items.length * 85);
@@ -799,7 +799,7 @@ export class CardRenderer {
       CanvasRenderer.drawRoundedRect(ctx, itemX, listY, 6, itemH, 3, accentColor);
 
       // Icon & Name
-      const emoji = TYPE_EMOJI[item.type] ?? '🛒';
+      const emoji = item.emoji || TYPE_EMOJI[item.type] || '🛒';
       ctx.fillStyle = Theme.colors.textPrimary;
       ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
       ctx.fillText(`#${i + 1}  ${emoji}  ${item.name}`, itemX + 25, listY + 30);

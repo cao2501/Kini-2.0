@@ -86,11 +86,17 @@ export default class ShopCommand implements ICommand {
       .addStringOption(o => o.setName('name').setDescription('Tên sản phẩm').setRequired(true))
     )
     .addSubcommand(s => s.setName('edit').setDescription('[Admin] Chỉnh sửa sản phẩm')
-      .addStringOption(o => o.setName('name').setDescription('Tên sản phẩm').setRequired(true))
+      .addStringOption(o => o.setName('category').setDescription('Danh mục sản phẩm').setRequired(true).addChoices(
+        { name: '📦 Vật phẩm', value: 'GENERAL' },
+        { name: '💍 Nhẫn cưới', value: 'RING' },
+      ))
+      .addIntegerOption(o => o.setName('id').setDescription('ID sản phẩm (Số thứ tự hiển thị trong /shop list)').setRequired(true).setMinValue(1))
       .addIntegerOption(o => o.setName('price').setDescription('Giá mới'))
-      .addIntegerOption(o => o.setName('stock').setDescription('Số lượng mới'))
+      .addIntegerOption(o => o.setName('stock').setDescription('Số lượng mới (0 = không giới hạn)'))
       .addBooleanOption(o => o.setName('enabled').setDescription('Bật/Tắt'))
       .addStringOption(o => o.setName('image').setDescription('URL hình ảnh mới (hoặc "none" để xóa)'))
+      .addStringOption(o => o.setName('description').setDescription('Mô tả/Giới thiệu sản phẩm mới (hoặc "none" để xóa)'))
+      .addStringOption(o => o.setName('emoji').setDescription('Emoji tùy chỉnh hiển thị bên trái tên (hoặc "none" để xóa)'))
     );
 
   async execute(interaction: any, kernel: Kernel): Promise<void> {
@@ -120,13 +126,20 @@ export default class ShopCommand implements ICommand {
       const attachment = new AttachmentBuilder(buffer, { name: 'shop.png' });
 
       // Select menu
-      const selectOptions = items.slice(0, 25).map((item, idx) =>
-        new StringSelectMenuOptionBuilder()
+      const selectOptions = items.slice(0, 25).map((item, idx) => {
+        const option = new StringSelectMenuOptionBuilder()
           .setLabel(`#${idx + 1} ${item.name}`)
           .setDescription(`💰 ${item.price.toLocaleString()} ${item.currency === 'VND' ? 'VNĐ' : 'coins'}`)
-          .setEmoji(TYPE_EMOJI[item.type] ?? '🛒')
-          .setValue(`shop_item:${item.id}`)
-      );
+          .setValue(`shop_item:${item.id}`);
+
+        const emojiVal = item.emoji || TYPE_EMOJI[item.type] || '🛒';
+        try {
+          option.setEmoji(emojiVal);
+        } catch {
+          option.setEmoji('🛒');
+        }
+        return option;
+      });
 
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('shop:detail')
@@ -334,23 +347,37 @@ export default class ShopCommand implements ICommand {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
         return void interaction.reply({ content: '❌ Cần quyền Manage Server.', ephemeral: true });
       }
-      const name = interaction.options.getString('name', true);
-      const item = await kernel.db.shopItem.findFirst({ where: { guildId, name } });
-      if (!item) return void interaction.reply({ content: `❌ Sản phẩm **${name}** không tồn tại.`, ephemeral: true });
+      const category = interaction.options.getString('category', true);
+      const itemIndex = interaction.options.getInteger('id', true); // 1-based
+
+      // Find item in that category by index (matching display order: price asc)
+      const itemsInCat = await kernel.db.shopItem.findMany({
+        where: { guildId, category },
+        orderBy: { price: 'asc' },
+      });
+
+      const item = itemsInCat[itemIndex - 1];
+      if (!item) {
+        return void interaction.reply({ content: `❌ Không tìm thấy sản phẩm số **#${itemIndex}** trong danh mục **${category === 'RING' ? 'Nhẫn cưới' : 'Vật phẩm'}**.`, ephemeral: true });
+      }
 
       const price = interaction.options.getInteger('price');
       const stockOpt = interaction.options.getInteger('stock');
       const enabled = interaction.options.getBoolean('enabled');
       const image = interaction.options.getString('image');
+      const description = interaction.options.getString('description');
+      const emoji = interaction.options.getString('emoji');
 
       const updates: any = {};
       if (price !== null) updates.price = price;
       if (stockOpt !== null) updates.stock = stockOpt > 0 ? stockOpt : null;
       if (enabled !== null) updates.enabled = enabled;
       if (image !== null) updates.imageUrl = image === 'none' ? null : image;
+      if (description !== null) updates.description = description === 'none' ? null : description;
+      if (emoji !== null) updates.emoji = emoji === 'none' ? null : emoji;
 
       await kernel.db.shopItem.update({ where: { id: item.id }, data: updates });
-      await interaction.reply({ content: `✅ Đã cập nhật sản phẩm **${name}**.`, ephemeral: true });
+      await interaction.reply({ content: `✅ Đã cập nhật sản phẩm **${item.name}** (ID: #${itemIndex}).`, ephemeral: true });
     }
   }
 }

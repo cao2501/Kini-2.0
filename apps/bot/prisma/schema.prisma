@@ -295,6 +295,7 @@ model ShopItem {
   imageUrl    String?
   stock       Int?     // null = unlimited
   enabled     Boolean  @default(true)
+  emoji       String?
   createdAt   DateTime @default(now())
 
   guild      Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)

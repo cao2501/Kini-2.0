@@ -59,13 +59,20 @@ export default class ShopInteractionEvent implements IEvent<'interactionCreate'>
     const buffer = await CardRenderer.drawShopListCard(interaction.guild!.name, items);
     const attachment = new AttachmentBuilder(buffer, { name: 'shop.png' });
 
-    const selectOptions = items.slice(0, 25).map((item, idx) =>
-      new StringSelectMenuOptionBuilder()
+    const selectOptions = items.slice(0, 25).map((item, idx) => {
+      const option = new StringSelectMenuOptionBuilder()
         .setLabel(`#${idx + 1} ${item.name}`)
         .setDescription(`💰 ${item.price.toLocaleString()} ${item.currency === 'VND' ? 'VNĐ' : 'coins'}`)
-        .setEmoji(TYPE_EMOJI[item.type] ?? '🛒')
-        .setValue(`shop_item:${item.id}`)
-    );
+        .setValue(`shop_item:${item.id}`);
+
+      const emojiVal = item.emoji || TYPE_EMOJI[item.type] || '🛒';
+      try {
+        option.setEmoji(emojiVal);
+      } catch {
+        option.setEmoji('🛒');
+      }
+      return option;
+    });
 
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId('shop:detail')
