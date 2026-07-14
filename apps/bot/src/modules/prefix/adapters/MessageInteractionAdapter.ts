@@ -166,28 +166,35 @@ export class MessageInteractionAdapter {
   }
 
   // ── Reply methods ──────────────────────────────────────────────────────────
-  async reply(options: any): Promise<void> {
+  async reply(options: any): Promise<any> {
     const payload = this.buildPayload(options);
     this.sentReply = await this.message.reply(payload).catch(() => null);
+    return this.sentReply;
   }
 
-  async deferReply(_options?: { ephemeral?: boolean }): Promise<void> {
+  async deferReply(_options?: { ephemeral?: boolean }): Promise<any> {
     this.deferred = true;
     await (this.message.channel as TextChannel).sendTyping().catch(() => {});
+    return null;
   }
 
-  async editReply(options: any): Promise<void> {
+  async editReply(options: any): Promise<any> {
     const payload = this.buildPayload(options);
     if (this.sentReply) {
       await this.sentReply.edit(payload).catch(() => {});
     } else {
       this.sentReply = await this.message.channel.send(payload).catch(() => null);
     }
+    return this.sentReply;
   }
 
-  async followUp(options: any): Promise<void> {
+  async fetchReply(): Promise<any> {
+    return this.sentReply;
+  }
+
+  async followUp(options: any): Promise<any> {
     const payload = this.buildPayload(options);
-    await this.message.channel.send(payload).catch(() => {});
+    return await this.message.channel.send(payload).catch(() => null);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
