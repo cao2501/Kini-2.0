@@ -812,7 +812,7 @@ export class CardRenderer {
     // Header Title
     ctx.fillStyle = Theme.colors.textMuted;
     ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('🏪 CỬA HÀNG SERVER', 40, 50);
+    ctx.fillText('CỬA HÀNG SERVER', 40, 50);
 
     ctx.fillStyle = Theme.colors.textPrimary;
     ctx.font = 'bold 36px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
@@ -820,10 +820,6 @@ export class CardRenderer {
 
     // Draw List of Items
     let listY = 140;
-    const TYPE_EMOJI: Record<string, string> = {
-      ROLE: '🎭',
-      CUSTOM: '🎁',
-    };
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -839,10 +835,9 @@ export class CardRenderer {
       CanvasRenderer.drawRoundedRect(ctx, itemX, listY, 6, itemH, 3, accentColor);
 
       // Icon & Name
-      const emoji = item.emoji || TYPE_EMOJI[item.type] || '🛒';
       ctx.fillStyle = Theme.colors.textPrimary;
       ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-      ctx.fillText(`#${i + 1}  ${emoji}  ${item.name}`, itemX + 25, listY + 30);
+      ctx.fillText(`#${i + 1}  [${item.type}]  ${item.name}`, itemX + 25, listY + 30);
 
       // Description
       ctx.fillStyle = Theme.colors.textMuted;
@@ -861,7 +856,7 @@ export class CardRenderer {
       // Stock Info (Right aligned)
       ctx.fillStyle = Theme.colors.textSecondary;
       ctx.font = '500 13px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-      const stockText = item.stock !== null ? `📦 Còn lại: ${item.stock}` : '📦 Vô hạn';
+      const stockText = item.stock !== null ? `Còn lại: ${item.stock}` : 'Vô hạn';
       ctx.fillText(stockText, itemX + itemW - 25, listY + 52);
       ctx.textAlign = 'left'; // Reset alignment
 
@@ -1093,7 +1088,7 @@ export class CardRenderer {
     // Title
     ctx.fillStyle = Theme.colors.accentGold;
     ctx.font = 'bold 24px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText(`🏪 ${itemName}`, 40, 60);
+    ctx.fillText(itemName, 40, 60);
 
     // Image layout parameters
     const hasImage = !!imageUrl;
@@ -1119,7 +1114,7 @@ export class CardRenderer {
     CanvasRenderer.drawRoundedRect(ctx, 40, infoY, 180, 65, Theme.borderRadius.small, Theme.colors.card);
     ctx.fillStyle = Theme.colors.textSecondary;
     ctx.font = 'bold 12px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('💰 GIÁ BÁN', 55, infoY + 23);
+    ctx.fillText('GIÁ BÁN', 55, infoY + 23);
     ctx.fillStyle = Theme.colors.accentGold;
     ctx.font = 'bold 16px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
     const currencyStr = currency === 'VND' ? 'VNĐ' : 'coins';
@@ -1129,7 +1124,7 @@ export class CardRenderer {
     CanvasRenderer.drawRoundedRect(ctx, 230, infoY, 180, 65, Theme.borderRadius.small, Theme.colors.card);
     ctx.fillStyle = Theme.colors.textSecondary;
     ctx.font = 'bold 12px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('📦 KHO HÀNG', 245, infoY + 23);
+    ctx.fillText('KHO HÀNG', 245, infoY + 23);
     ctx.fillStyle = Theme.colors.textPrimary;
     ctx.font = 'bold 16px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
     ctx.fillText(stockText, 245, infoY + 48);
@@ -1138,7 +1133,7 @@ export class CardRenderer {
     CanvasRenderer.drawRoundedRect(ctx, 40, infoY + 80, 370, 60, Theme.borderRadius.small, Theme.colors.card);
     ctx.fillStyle = Theme.colors.textSecondary;
     ctx.font = 'bold 11px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-    ctx.fillText('🎁 PHẦN THƯỞNG KHI MUA', 55, infoY + 103);
+    ctx.fillText('PHẦN THƯỞNG KHI MUA', 55, infoY + 103);
     ctx.fillStyle = Theme.colors.info;
     ctx.font = 'bold 14px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
     // Truncate reward text if needed
