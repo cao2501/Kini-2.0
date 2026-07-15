@@ -214,6 +214,29 @@ export class ExpressServer {
 			next();
 		};
 
+		// Middleware to check guild management permissions
+		const checkGuildAccess = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+			const guildId = req.params.id;
+			const userGuilds = (req.session as any).guilds || [];
+			const matchingGuild = userGuilds.find((g: any) => g.id === guildId);
+
+			if (!matchingGuild) {
+				return res.status(403).json({ error: 'Forbidden: Bạn không có quyền truy cập máy chủ này.' });
+			}
+
+			// Verify permissions in matching guild
+			const perms = BigInt(matchingGuild.permissions);
+			const isAdmin = (perms & 8n) === 8n;
+			const isManager = (perms & 0x20n) === 0x20n;
+			const isOwner = matchingGuild.owner;
+
+			if (!isOwner && !isAdmin && !isManager) {
+				return res.status(403).json({ error: 'Forbidden: Cần quyền Quản lý máy chủ.' });
+			}
+
+			next();
+		};
+
 		// Get system stats
 		this.app.get('/api/stats', requireAuth, (req, res) => {
 			const mem = process.memoryUsage();
@@ -259,7 +282,7 @@ export class ExpressServer {
 		});
 
 		// Get modules status and configs for a specific guild
-		this.app.get('/api/guilds/:id/modules', requireAuth, async (req, res) => {
+		this.app.get('/api/guilds/:id/modules', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const guild = this.kernel.client.guilds.cache.get(guildId);
 			if (!guild) return res.status(404).json({ error: 'Guild not found' });
@@ -288,7 +311,7 @@ export class ExpressServer {
 		});
 
 		// Toggle module status
-		this.app.post('/api/guilds/:id/modules/:name/toggle', requireAuth, async (req, res) => {
+		this.app.post('/api/guilds/:id/modules/:name/toggle', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const moduleName = req.params.name as string;
 			const { enabled } = req.body;
@@ -307,7 +330,7 @@ export class ExpressServer {
 		});
 
 		// Save module config
-		this.app.post('/api/guilds/:id/modules/:name/config', requireAuth, async (req, res) => {
+		this.app.post('/api/guilds/:id/modules/:name/config', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const moduleName = req.params.name as string;
 			const { config } = req.body;
@@ -350,7 +373,7 @@ export class ExpressServer {
 		});
 
 		// GET: get all guild roles
-		this.app.get('/api/guilds/:id/roles', requireAuth, async (req, res) => {
+		this.app.get('/api/guilds/:id/roles', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const guild = this.kernel.client.guilds.cache.get(guildId);
 			if (!guild) return res.status(404).json({ error: 'Guild not found' });
@@ -371,7 +394,7 @@ export class ExpressServer {
 		});
 
 		// GET: get all slash commands mapped by their module ownership
-		this.app.get('/api/guilds/:id/commands', requireAuth, (req, res) => {
+		this.app.get('/api/guilds/:id/commands', requireAuth, checkGuildAccess, (req, res) => {
 			const map: Record<string, string[]> = {};
 			
 			for (const [cmdName, cmd] of this.kernel.client.commands) {
@@ -410,7 +433,7 @@ export class ExpressServer {
 		});
 
 		// GET: get permission rules
-		this.app.get('/api/guilds/:id/permissions', requireAuth, async (req, res) => {
+		this.app.get('/api/guilds/:id/permissions', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			try {
 				const { config } = await getModuleConfig<any>(guildId, 'command_permissions');
@@ -421,7 +444,7 @@ export class ExpressServer {
 		});
 
 		// POST: save permission rules
-		this.app.post('/api/guilds/:id/permissions', requireAuth, async (req, res) => {
+		this.app.post('/api/guilds/:id/permissions', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const { permissions } = req.body;
 
@@ -598,7 +621,7 @@ export class ExpressServer {
 		// ── PREFIX / ALIAS API ────────────────────────────────────────────────────
 
 		// GET: global prefix + alias list + available commands with subcommands
-		this.app.get('/api/guilds/:id/prefix', requireAuth, async (req, res) => {
+		this.app.get('/api/guilds/:id/prefix', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const guild = this.kernel.client.guilds.cache.get(guildId);
 			if (!guild) return res.status(404).json({ error: 'Guild not found' });
@@ -634,7 +657,7 @@ export class ExpressServer {
 		});
 
 		// POST: update global prefix
-		this.app.post('/api/guilds/:id/prefix/global', requireAuth, async (req, res) => {
+		this.app.post('/api/guilds/:id/prefix/global', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const { prefix } = req.body;
 			if (!prefix || typeof prefix !== 'string' || prefix.length > 8) {
@@ -650,7 +673,7 @@ export class ExpressServer {
 		});
 
 		// POST: add or update an alias
-		this.app.post('/api/guilds/:id/prefix/alias', requireAuth, async (req, res) => {
+		this.app.post('/api/guilds/:id/prefix/alias', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const { alias, command, subcommand } = req.body;
 
@@ -679,7 +702,7 @@ export class ExpressServer {
 		});
 
 		// DELETE: remove an alias
-		this.app.delete('/api/guilds/:id/prefix/alias/:alias', requireAuth, async (req, res) => {
+		this.app.delete('/api/guilds/:id/prefix/alias/:alias', requireAuth, checkGuildAccess, async (req, res) => {
 			const guildId = req.params.id as string;
 			const aliasKey = (req.params.alias as string).toLowerCase();
 			try {
