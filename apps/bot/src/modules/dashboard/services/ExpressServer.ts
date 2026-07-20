@@ -110,6 +110,11 @@ export class ExpressServer {
 			});
 		});
 
+		this.httpServer.on('error', (err: any) => {
+			logger.error('Dashboard ExpressServer error:', { error: err });
+			process.exit(1);
+		});
+
 		this.httpServer.listen(this.port, () => {
 			logger.info(`Dashboard server running on port ${this.port} (URL: http://localhost:${this.port})`, {
 				module: 'dashboard',
