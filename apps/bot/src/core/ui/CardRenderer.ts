@@ -816,7 +816,13 @@ export class CardRenderer {
       CanvasRenderer.drawRoundedRect(ctx, itemX, listY, 6, itemH, 3, accentColor);
 
       // Icon & Name
-      const emoji = item.emoji || (item.type === 'ROLE' ? '🎭' : '🎁');
+      let emoji = item.type === 'ROLE' ? '🎭' : '🎁';
+      if (item.emoji && !item.emoji.startsWith('<') && !item.emoji.endsWith('>')) {
+        const isUnicodeEmoji = /^[\p{Emoji}\u200d\uFE0F]+$/u.test(item.emoji);
+        if (isUnicodeEmoji) {
+          emoji = item.emoji;
+        }
+      }
       ctx.fillStyle = Theme.colors.textPrimary;
       ctx.font = 'bold 18px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
       ctx.fillText(`#${i + 1}  ${emoji}  ${item.name}`, itemX + 25, listY + 30);
@@ -984,7 +990,7 @@ export class CardRenderer {
     if (purchases.length === 0) {
       ctx.fillStyle = Theme.colors.textMuted;
       ctx.font = 'italic 16px "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", Arial, sans-serif';
-      ctx.fillText('Kho đồ trống trơn. Dùng /shop buy để mua vật phẩm!', 40, 180);
+      ctx.fillText('Kho đồ trống trơn. Dùng /buyring để mua nhẫn cưới!', 40, 180);
     } else {
       for (let i = 0; i < purchases.length; i++) {
         const item = purchases[i];

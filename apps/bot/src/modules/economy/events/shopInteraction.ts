@@ -5,6 +5,7 @@ import {
 import { IEvent } from '../../../core/interfaces/IEvent';
 import { Kernel } from '../../../core/Kernel';
 import { createModuleLogger } from '../../../core/logger/Logger';
+import { getSafeEmoji } from '../commands/shop';
 
 const log = createModuleLogger('economy');
 
@@ -41,21 +42,23 @@ export default class ShopInteractionEvent implements IEvent<'interactionCreate'>
       ? (item.stock > 0 ? `${item.stock} sản phẩm` : 'Hết hàng')
       : 'Vô hạn';
 
-    const rewardText = item.type === 'ROLE' && item.roleId
-      ? `Role: <@&${item.roleId}>`
-      : 'Custom — liên hệ Admin để nhận';
+    const rewardText = item.roleId ? `Role: <@&${item.roleId}>` : null;
 
-    const emoji = item.emoji || (item.type === 'ROLE' ? '🎭' : '🎁');
+    const emoji = getSafeEmoji(item.emoji, item.roleId ? '🎭' : '🎁');
 
     const embed = new EmbedBuilder()
       .setColor(0xff7bb5)
       .setTitle(`${emoji} ${item.name}`)
-      .setDescription(item.description || 'Không có mô tả sản phẩm.')
-      .addFields(
-        { name: '💰 Giá bán', value: `${item.price.toLocaleString()} ${item.currency === 'VND' ? 'VNĐ' : 'coins'}`, inline: true },
-        { name: '📦 Kho hàng', value: stockText, inline: true },
-        { name: '🎁 Phần thưởng', value: rewardText, inline: true }
-      );
+      .setDescription(item.description || 'Không có mô tả sản phẩm.');
+
+    const fields = [
+      { name: '💰 Giá bán', value: `${item.price.toLocaleString()} ${item.currency === 'VND' ? 'VNĐ' : 'coins'}`, inline: true },
+      { name: '📦 Kho hàng', value: stockText, inline: true },
+    ];
+    if (rewardText) {
+      fields.push({ name: '🎁 Phần thưởng', value: rewardText, inline: true });
+    }
+    embed.addFields(fields);
 
     if (item.imageUrl) {
       embed.setThumbnail(item.imageUrl);

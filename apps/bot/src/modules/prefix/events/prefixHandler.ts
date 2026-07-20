@@ -50,18 +50,45 @@ export default class PrefixHandlerEvent implements IEvent<'messageCreate'> {
           inventory: { command: 'inventory', subcommand: 'view' },
           inv: { command: 'inventory', subcommand: 'view' },
           give: { command: 'inventory', subcommand: 'give' },
-          shop: { command: 'shop', subcommand: 'list' },
+          xoado: { command: 'inventory', subcommand: 'remove' },
+          takering: { command: 'inventory', subcommand: 'remove' },
+          removering: { command: 'inventory', subcommand: 'remove' },
+          shop: { command: 'shop' },
+          muanhan: { command: 'buyring' },
+          buyring: { command: 'buyring' },
+          tangnhan: { command: 'givering' },
+          givering: { command: 'givering' },
+          addnhan: { command: 'addring' },
+          addring: { command: 'addring' },
+          delnhan: { command: 'delring' },
+          delring: { command: 'delring' },
+          editnhan: { command: 'editring' },
+          editring: { command: 'editring' },
         };
         mapping = fallbacks[aliasKey];
       }
 
-      if (mapping && (mapping.command === 'shop' || mapping.command === 'inventory') && args.length > 0) {
+      if (mapping && mapping.command === 'shop' && args.length > 0) {
         const firstArg = args[0].toLowerCase();
-        const subs = mapping.command === 'shop'
-          ? ['buy', 'add', 'remove', 'edit', 'give', 'list']
-          : ['view', 'give'];
+        const legacyMap: Record<string, string> = {
+          buy: 'buyring',
+          add: 'addring',
+          remove: 'delring',
+          edit: 'editring',
+          give: 'givering',
+        };
+        if (legacyMap[firstArg]) {
+          mapping = { command: legacyMap[firstArg] };
+          args.shift();
+        } else if (firstArg === 'list') {
+          mapping = { command: 'shop' };
+          args.shift();
+        }
+      } else if (mapping && mapping.command === 'inventory' && args.length > 0) {
+        const firstArg = args[0].toLowerCase();
+        const subs = ['view', 'give', 'remove'];
         if (subs.includes(firstArg)) {
-          mapping = { command: mapping.command, subcommand: firstArg };
+          mapping = { command: 'inventory', subcommand: firstArg };
           args.shift();
         }
       }

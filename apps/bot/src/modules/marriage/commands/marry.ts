@@ -178,7 +178,7 @@ export default class MarryCommand implements ICommand {
 
 			if (!ringItem) {
 				return void interaction.editReply(
-					`❌ Không tìm thấy nhẫn có tên/ID là **"${ringNameOrId}"** trong cửa hàng nhẫn (\`/shop list category: RING\`).`,
+					`❌ Không tìm thấy nhẫn có tên/ID là **"${ringNameOrId}"** trong cửa hàng nhẫn (\`/shop\`).`,
 				);
 			}
 
@@ -186,7 +186,7 @@ export default class MarryCommand implements ICommand {
 			const hasRing = await checkRingOwnership(kernel, guildId, userId, ringItem.id);
 			if (!hasRing) {
 				return void interaction.editReply(
-					`❌ Bạn không sở hữu nhẫn **${ringItem.name}**! Vui lòng mua nhẫn trong \`/shop list\` trước.`,
+					`❌ Bạn không sở hữu nhẫn **${ringItem.name}**! Vui lòng mua nhẫn trong \`/shop\` trước.`,
 				);
 			}
 
