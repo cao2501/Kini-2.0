@@ -8,23 +8,28 @@
   <!-- Google Fonts Outfit & Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body class="landing">
   <div class="glow-bg"></div>
 
   <main class="landing-container">
+    <div class="hero-badge">
+      <span class="status-dot online"></span>
+      <span>v2.0 Enterprise Release</span>
+    </div>
+
     <header class="hero-header">
       <div class="logo-area">
         <span class="logo-emoji">🤖</span>
         <h1 class="logo-text">Gamma Beta <span>2.0</span></h1>
       </div>
-      <p class="tagline">Enterprise Discord Bot & Multi-Guild Management System</p>
+      <p class="tagline">Hệ thống quản trị Discord Bot đa máy chủ — 29+ Modules độc lập, AI Gemini & Live Stream Logs</p>
     </header>
 
     <section class="login-card glass">
       <h2>Chào mừng trở lại</h2>
-      <p>Quản lý các module, cấu hình tính năng, xem dữ liệu phân tích và theo dõi logs trực tiếp từ trình duyệt của bạn.</p>
+      <p>Quản lý các module, cấu hình tính năng, tải CDN ảnh & theo dõi trực tiếp trạng thái hệ thống ngay từ trình duyệt.</p>
       
       <div class="actions">
         <a href="/auth/login" class="btn btn-discord">
@@ -37,25 +42,23 @@
     </section>
 
     <section class="features-grid">
-      <div class="feature-item glass">
-        <h3>🛡️ Anti-Nuke</h3>
-        <p>Bảo vệ server tự động trước các hành vi phá hoại hàng loạt.</p>
+      <div class="feature-item glass-item">
+        <h3>🛡️ Anti-Nuke Security</h3>
+        <p>Bảo vệ máy chủ tự động trước các vụ tấn công bot ồ ạt & quản trị viên bất hợp pháp.</p>
       </div>
-      <div class="feature-item glass">
-        <h3>🤖 AI Gemini</h3>
-        <p>Tương tác ngôn ngữ tự nhiên thông qua mô hình Flash 1.5.</p>
+      <div class="feature-item glass-item">
+        <h3>🤖 AI Gemini 1.5</h3>
+        <p>Tích hợp trí tuệ nhân tạo trò chuyện, giải đáp câu hỏi & xử lý lệnh tự động.</p>
       </div>
-      <div class="feature-item glass">
-        <h3>📊 Analytics</h3>
-        <p>Thống kê sự phát triển thành viên và tương tác thời gian thực.</p>
+      <div class="feature-item glass-item">
+        <h3>💳 Nạp Tiền SePay</h3>
+        <p>Tích hợp cổng thanh toán tự động qua mã QR Ngân hàng (MBBank, Vietcombank...).</p>
       </div>
-      <div class="feature-item glass">
-        <h3>🎵 Real Music</h3>
-        <p>Trình phát nhạc chất lượng cao với hàng đợi linh hoạt.</p>
+      <div class="feature-item glass-item">
+        <h3>📜 Live System Logs</h3>
+        <p>Theo dõi luồng log hệ thống trực tiếp thông qua kết nối WebSocket thời gian thực.</p>
       </div>
     </section>
   </main>
-
-
 </body>
 </html>

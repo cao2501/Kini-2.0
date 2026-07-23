@@ -3,8 +3,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   let activeGuildId = null;
   let activeModuleName = null;
   let socket = null;
+  let rawModulesData = [];
+  let currentCategory = 'all';
+  let searchQuery = '';
 
-  // 1. Check Auth & Load profile
+  // Toast Notification Helper
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(50px)';
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
+  }
+
+  // 1. Check Auth & Load User Profile
   try {
     const userRes = await fetch('/auth/user');
     currentUser = await userRes.json();
@@ -16,22 +35,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('user-name').innerText = currentUser.username;
     if (currentUser.avatar) {
       document.getElementById('user-avatar').src = currentUser.avatar;
-    } else {
-      document.getElementById('user-avatar').src = 'https://cdn.discordapp.com/embed/avatars/0.png';
     }
   } catch (err) {
     window.location.href = '/';
     return;
   }
 
-  // 2. Fetch system stats
+  // 2. Fetch System Stats
   async function loadStats() {
     try {
       const statsRes = await fetch('/api/stats');
       const stats = await statsRes.json();
+      
       document.getElementById('ping-val').innerText = stats.ping;
       document.getElementById('modules-val').innerText = stats.modulesCount;
       document.getElementById('commands-val').innerText = stats.commandsCount;
+      document.getElementById('ram-val').innerText = stats.ram?.heapUsed || '--';
+
+      // Top metrics bar
+      document.getElementById('top-ping-val').innerText = `${stats.ping} ms`;
+      document.getElementById('top-modules-val').innerText = `${stats.modulesCount} Active`;
+      document.getElementById('top-commands-val').innerText = `${stats.commandsCount} Total`;
 
       const maintenanceBtn = document.getElementById('btn-maintenance');
       if (stats.maintenanceMode) {
@@ -44,9 +68,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch {}
   }
   loadStats();
-  setInterval(loadStats, 10000); // refresh stats every 10s
+  setInterval(loadStats, 10000);
 
-  // 3. Populate Guild selector
+  // 3. Populate Guild Selector
   try {
     const guildsRes = await fetch('/api/guilds');
     const guilds = await guildsRes.json();
@@ -63,21 +87,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   } catch {}
 
-  // Helper to get currently active tab
   function getActiveTab() {
     const activeItem = document.querySelector('.nav-item.active');
     return activeItem ? activeItem.dataset.tab : 'config';
   }
 
-  // Helper to load data based on active tab
   function loadActiveTabData(guildId) {
     const activeTab = getActiveTab();
     if (activeTab === 'config') {
       loadModules(guildId);
     } else if (activeTab === 'prefix') {
       loadPrefixSettings(guildId);
-    } else if (activeTab === 'permissions') {
-      loadPermissionsSettings(guildId);
     }
   }
 
@@ -92,7 +112,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
       });
-      document.getElementById(`tab-${tabId}`).classList.add('active');
+      const targetTab = document.getElementById(`tab-${tabId}`);
+      if (targetTab) targetTab.classList.add('active');
 
       if (activeGuildId) {
         loadActiveTabData(activeGuildId);
@@ -100,7 +121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  // 5. Handle Guild change selection
+  // 5. Handle Guild Selection Change
   const select = document.getElementById('server-select');
   select.addEventListener('change', async (e) => {
     const selectedOpt = select.options[select.selectedIndex];
@@ -109,91 +130,133 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (!inGuild) {
       window.open(selectedOpt.dataset.inviteUrl, '_blank');
-      select.value = activeGuildId || ''; // revert select state
+      select.value = activeGuildId || '';
       return;
     }
 
     activeGuildId = guildId;
     document.getElementById('current-server-title').innerText = `Cấu hình cho máy chủ: ${selectedOpt.innerText.replace('🎮 ', '')}`;
-    
-    // Dynamically load data for whichever tab is currently active
     loadActiveTabData(guildId);
   });
 
-  // 6. Load modules lists for guild
+  // Category & Search Helpers for Modules
+  function getModuleCategory(name) {
+    const n = name.toLowerCase();
+    if (n.includes('antinuke') || n.includes('scam') || n.includes('verification')) return 'security';
+    if (n.includes('moderation') || n.includes('logging') || n.includes('starboard')) return 'moderation';
+    if (n.includes('economy') || n.includes('shop') || n.includes('premium')) return 'economy';
+    if (n.includes('ai') || n.includes('music')) return 'ai';
+    return 'utility';
+  }
+
+  function filterAndRenderModules() {
+    const container = document.getElementById('modules-list');
+    if (!rawModulesData.length) return;
+
+    const filtered = rawModulesData.filter(m => {
+      const cat = getModuleCategory(m.name);
+      const matchCat = currentCategory === 'all' || cat === currentCategory;
+      const matchSearch = !searchQuery || m.displayName.toLowerCase().includes(searchQuery) || m.name.toLowerCase().includes(searchQuery) || m.description.toLowerCase().includes(searchQuery);
+      return matchCat && matchSearch;
+    });
+
+    container.innerHTML = '';
+    if (!filtered.length) {
+      container.innerHTML = '<p class="placeholder-text" style="color:var(--text-muted); padding:16px;">Không tìm thấy module phù hợp.</p>';
+      return;
+    }
+
+    filtered.forEach(m => {
+      const item = document.createElement('div');
+      item.className = `module-item glass-item ${m.name === activeModuleName ? 'active' : ''}`;
+      
+      item.innerHTML = `
+        <div class="module-info-row">
+          <div class="module-title-desc">
+            <span class="m-title">${m.displayName} ${m.premium ? '💎' : ''}</span>
+            <span class="m-desc">${m.description}</span>
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-${m.name}" ${m.enabled ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
+      `;
+
+      const cb = item.querySelector(`input[type="checkbox"]`);
+      cb.addEventListener('change', async (evt) => {
+        try {
+          const toggleRes = await fetch(`/api/guilds/${activeGuildId}/modules/${m.name}/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: evt.target.checked })
+          });
+          const data = await toggleRes.json();
+          if (data.success) {
+            m.enabled = evt.target.checked;
+            showToast(`Module ${m.displayName} đã ${m.enabled ? 'BẬT' : 'TẮT'}.`, 'success');
+          } else {
+            evt.target.checked = !evt.target.checked;
+            showToast('Không thể lưu trạng thái module.', 'error');
+          }
+        } catch {
+          evt.target.checked = !evt.target.checked;
+          showToast('Lỗi kết nối mạng.', 'error');
+        }
+      });
+
+      item.addEventListener('click', (event) => {
+        if (event.target.tagName === 'INPUT' || event.target.className === 'slider' || event.target.className === 'switch') return;
+        document.querySelectorAll('.module-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        selectModuleForEditing(m);
+      });
+
+      container.appendChild(item);
+    });
+  }
+
+  // 6. Load Modules List for Guild
   async function loadModules(guildId) {
     const container = document.getElementById('modules-list');
     container.innerHTML = '<div class="loader">Đang tải danh sách modules...</div>';
 
-    // Reset editor
     activeModuleName = null;
     document.getElementById('editing-module-name').innerText = 'Chưa chọn';
     document.getElementById('config-textarea').value = '';
     document.getElementById('config-textarea').disabled = true;
     document.getElementById('btn-save-config').disabled = true;
+    document.getElementById('btn-format-json').disabled = true;
 
     try {
       const res = await fetch(`/api/guilds/${guildId}/modules`);
-      const modules = await res.json();
-      
-      container.innerHTML = '';
-      modules.forEach(m => {
-        const item = document.createElement('div');
-        item.className = 'module-item glass-item';
-        if (m.premium) item.classList.add('premium-module');
-
-        item.innerHTML = `
-          <div class="module-info-row">
-            <div class="module-title-desc">
-              <span class="m-title">${m.displayName} ${m.premium ? '💎' : ''}</span>
-              <span class="m-desc">${m.description}</span>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="toggle-${m.name}" ${m.enabled ? 'checked' : ''}>
-              <span class="slider round"></span>
-            </label>
-          </div>
-        `;
-
-        // Checkbox toggle logic
-        const cb = item.querySelector(`input[type="checkbox"]`);
-        cb.addEventListener('change', async (evt) => {
-          try {
-            const toggleRes = await fetch(`/api/guilds/${guildId}/modules/${m.name}/toggle`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ enabled: evt.target.checked })
-            });
-            const data = await toggleRes.json();
-            if (!data.success) {
-              evt.target.checked = !evt.target.checked; // revert
-              alert('Không thể lưu cài đặt.');
-            }
-          } catch {
-            evt.target.checked = !evt.target.checked; // revert
-          }
-        });
-
-        // Click row to edit config (avoid trigger when clicking toggle)
-        item.addEventListener('click', (event) => {
-          if (event.target.tagName === 'INPUT' || event.target.className === 'slider round' || event.target.className === 'switch') {
-            return;
-          }
-          
-          document.querySelectorAll('.module-item').forEach(el => el.classList.remove('selected'));
-          item.classList.add('selected');
-          
-          selectModuleForEditing(m);
-        });
-
-        container.appendChild(item);
-      });
+      rawModulesData = await res.json();
+      filterAndRenderModules();
     } catch {
       container.innerHTML = '<div class="error-text">❌ Không thể tải danh sách modules.</div>';
     }
   }
 
-  // 7. Select a module to show JSON config
+  // Category Filter Button Clicks
+  document.querySelectorAll('.cat-pill[data-cat]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.cat-pill[data-cat]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentCategory = btn.dataset.cat;
+      filterAndRenderModules();
+    });
+  });
+
+  // Search Input Handler
+  const searchInput = document.getElementById('module-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value.toLowerCase().trim();
+      filterAndRenderModules();
+    });
+  }
+
+  // 7. Select a Module to Edit JSON Config
   function selectModuleForEditing(mod) {
     activeModuleName = mod.name;
     document.getElementById('editing-module-name').innerText = mod.displayName;
@@ -203,10 +266,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     textarea.disabled = false;
 
     document.getElementById('btn-save-config').disabled = false;
+    document.getElementById('btn-format-json').disabled = false;
     document.getElementById('config-status-msg').innerText = '';
   }
 
-  // 8. Save module config
+  // Format JSON Button
+  const formatBtn = document.getElementById('btn-format-json');
+  if (formatBtn) {
+    formatBtn.addEventListener('click', () => {
+      const textarea = document.getElementById('config-textarea');
+      try {
+        const parsed = JSON.parse(textarea.value);
+        textarea.value = JSON.stringify(parsed, null, 2);
+        showToast('Đã định dạng JSON đẹp mắt!', 'success');
+      } catch {
+        showToast('Lỗi cú pháp JSON, không thể định dạng.', 'error');
+      }
+    });
+  }
+
+  // 8. Save Module Config
   const saveBtn = document.getElementById('btn-save-config');
   saveBtn.addEventListener('click', async () => {
     const textarea = document.getElementById('config-textarea');
@@ -217,7 +296,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       parsedConfig = JSON.parse(textarea.value);
     } catch (err) {
       msgSpan.innerText = '❌ JSON không đúng định dạng!';
-      msgSpan.className = 'status-msg err';
+      msgSpan.className = 'status-msg error';
+      showToast('Cú pháp JSON không hợp lệ!', 'error');
       return;
     }
 
@@ -233,519 +313,198 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (data.success) {
         msgSpan.innerText = '✅ Đã lưu cấu hình!';
-        msgSpan.className = 'status-msg ok';
+        msgSpan.className = 'status-msg success';
+        showToast(`Đã lưu cấu hình module ${activeModuleName}!`, 'success');
         
-        // Refresh local module data in list
-        loadModules(activeGuildId);
+        // Update local object config
+        const target = rawModulesData.find(m => m.name === activeModuleName);
+        if (target) target.config = parsedConfig;
       } else {
         msgSpan.innerText = `❌ Lỗi: ${data.error}`;
-        msgSpan.className = 'status-msg err';
+        msgSpan.className = 'status-msg error';
+        showToast(`Lỗi: ${data.error}`, 'error');
       }
     } catch {
       msgSpan.innerText = '❌ Lỗi kết nối mạng.';
-      msgSpan.className = 'status-msg err';
+      msgSpan.className = 'status-msg error';
+      showToast('Lỗi kết nối mạng.', 'error');
     }
   });
 
-  // 9. Web Socket Live Log Stream
+  // 9. Web Socket Live Log Terminal
   socket = io();
-  const terminal = document.getElementById('terminal-output');
-  
-  socket.on('log_message', (log) => {
-    const p = document.createElement('p');
-    p.className = `log-line log-${log.level}`;
-    
-    const timeSpan = `<span class="log-time">[${log.timestamp.slice(11, 19)}]</span>`;
-    const levelSpan = `<span class="log-lvl">${log.level.toUpperCase()}</span>`;
-    const modSpan = `<span class="log-mod">[${log.module}]</span>`;
-    
-    p.innerHTML = `${timeSpan} ${levelSpan} ${modSpan} ${log.message}`;
-    
-    terminal.appendChild(p);
-    
-    // Auto-scroll to bottom if close
-    terminal.scrollTop = terminal.scrollHeight;
+  const terminal = document.getElementById('log-terminal');
+  let currentLogLevel = 'all';
 
-    // Truncate screen if too many lines
-    if (terminal.children.length > 500) {
-      terminal.removeChild(terminal.firstChild);
-    }
-  });
+  if (socket && terminal) {
+    socket.on('log_message', (log) => {
+      if (currentLogLevel !== 'all' && log.level.toLowerCase() !== currentLogLevel) return;
 
-  document.getElementById('btn-clear-logs').addEventListener('click', () => {
-    terminal.innerHTML = '<span class="term-system">[Dashboard] Terminal cleared. Waiting for new logs...</span>';
-  });
-
-  // 10. Toggle Maintenance Mode (Owner only)
-  document.getElementById('btn-maintenance').addEventListener('click', async () => {
-    try {
-      const res = await fetch('/api/owner/maintenance', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        loadStats();
-        alert(`Chế độ bảo trì đã ${data.maintenanceMode ? 'BẬT' : 'TẮT'}.`);
-      } else {
-        alert(`Lỗi: ${data.error || 'Quyền hạn bị từ chối'}`);
-      }
-    } catch {
-      alert('Không thể kết nối đến server.');
-    }
-  });
-
-  // 11. PREFIX / ALIAS PANEL ─────────────────────────────────────────────────
-
-  let prefixData = null; // { globalPrefix, aliases, commands }
-
-  // Load prefix settings for a guild
-  async function loadPrefixSettings(guildId) {
-    document.getElementById('alias-list').innerHTML = '<div class="loader">Đang tải...</div>';
-    try {
-      const res = await fetch(`/api/guilds/${guildId}/prefix`);
-      if (!res.ok) return;
-      prefixData = await res.json();
-
-      // Update global prefix UI
-      const globalInput = document.getElementById('global-prefix-input');
-      const globalBadge = document.getElementById('global-prefix-badge');
-      const aliasBadge  = document.getElementById('alias-prefix-preview');
-
-      globalInput.value = prefixData.globalPrefix;
-      globalBadge.textContent = prefixData.globalPrefix;
-      aliasBadge.textContent = prefixData.globalPrefix;
-      document.getElementById('current-global-prefix').textContent = prefixData.globalPrefix;
-      document.getElementById('btn-save-global-prefix').disabled = false;
-
-      // Populate command select
-      const cmdSelect = document.getElementById('new-alias-command');
-      cmdSelect.innerHTML = '<option value="">-- Chọn lệnh --</option>';
-      prefixData.commands.forEach(cmd => {
-        const opt = document.createElement('option');
-        opt.value = cmd.name;
-        opt.textContent = `/${cmd.name}`;
-        opt.dataset.subcommands = JSON.stringify(cmd.subcommands);
-        cmdSelect.appendChild(opt);
-      });
-      document.getElementById('btn-add-alias').disabled = false;
-
-      // Render alias table
-      renderAliasList();
-    } catch {
-      document.getElementById('alias-list').innerHTML = '<p class="placeholder-text">❌ Lỗi tải dữ liệu.</p>';
-    }
-  }
-
-  // Render the alias rows
-  function renderAliasList() {
-    const container = document.getElementById('alias-list');
-    const aliases = prefixData?.aliases ?? {};
-    const keys = Object.keys(aliases);
-    if (!keys.length) {
-      container.innerHTML = '<p class="placeholder-text">Chưa có alias nào. Thêm alias ở form bên trên.</p>';
-      return;
-    }
-    container.innerHTML = '';
-    keys.sort().forEach(key => {
-      const { command, subcommand } = aliases[key];
-      const globalPrefix = prefixData.globalPrefix;
-      const example = `${globalPrefix}${key}`;
-      const slashEquiv = subcommand ? `/${command} ${subcommand}` : `/${command}`;
-
-      const row = document.createElement('div');
-      row.className = 'alias-row';
-      row.innerHTML = `
-        <span class="alias-key"><code>${globalPrefix}${key}</code></span>
-        <span class="alias-sep">→</span>
-        <span class="alias-cmd"><code>/${command}</code></span>
-        <span class="alias-sub">${subcommand ? `<code>${subcommand}</code>` : '<span class="alias-none">—</span>'}</span>
-        <span class="alias-example">
-          <code>${example}</code>
-          <span class="alias-equiv">≡ <code>${slashEquiv}</code></span>
-        </span>
-        <button class="alias-delete-btn" data-key="${key}" title="Xoá alias này">🗑️</button>
+      const p = document.createElement('div');
+      p.className = `log-line`;
+      
+      const timeStr = log.timestamp ? log.timestamp.slice(11, 19) : new Date().toLocaleTimeString();
+      const levelClass = log.level === 'error' ? 'log-level-error' : log.level === 'warn' ? 'log-level-warn' : 'log-level-info';
+      
+      p.innerHTML = `
+        <span class="log-time">[${timeStr}]</span>
+        <span class="log-module">${log.module || 'system'}</span>
+        <span class="log-level ${levelClass}">${(log.level || 'INFO').toUpperCase()}</span>
+        <span class="log-msg">${log.message}</span>
       `;
+      
+      terminal.appendChild(p);
 
-      row.querySelector('.alias-delete-btn').addEventListener('click', async () => {
-        if (!confirm(`Xoá alias "${key}"?`)) return;
-        try {
-          const res = await fetch(`/api/guilds/${activeGuildId}/prefix/alias/${encodeURIComponent(key)}`, { method: 'DELETE' });
-          const data = await res.json();
-          if (data.success) {
-            delete prefixData.aliases[key];
-            renderAliasList();
-            showAliasStatus(`✅ Đã xoá alias "${key}"`);
-          } else {
-            showAliasStatus('❌ ' + (data.error || 'Lỗi xoá'), true);
-          }
-        } catch { showAliasStatus('❌ Lỗi kết nối.', true); }
-      });
+      const autoscroll = document.getElementById('chk-autoscroll');
+      if (autoscroll && autoscroll.checked) {
+        terminal.scrollTop = terminal.scrollHeight;
+      }
 
-      container.appendChild(row);
+      if (terminal.children.length > 300) {
+        terminal.removeChild(terminal.firstChild);
+      }
     });
   }
 
-  function showAliasStatus(msg, isErr = false) {
-    const span = document.getElementById('alias-form-status');
-    span.textContent = msg;
-    span.className = 'status-msg ' + (isErr ? 'err' : 'ok');
-    setTimeout(() => { span.textContent = ''; span.className = 'status-msg'; }, 3500);
+  document.querySelectorAll('.log-level-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.log-level-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      currentLogLevel = pill.dataset.level;
+    });
+  });
+
+  const clearLogsBtn = document.getElementById('btn-clear-logs');
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener('click', () => {
+      terminal.innerHTML = '<div class="log-line"><span class="log-time">[System]</span><span class="log-module">dashboard</span><span class="log-level log-level-info">INFO</span><span class="log-msg">Terminal logs cleared.</span></div>';
+      showToast('Đã xóa danh sách logs.', 'info');
+    });
   }
 
-  // ── Form interactions ──────────────────────────────────────────────────────
-
-  // Global prefix live badge
-  document.getElementById('global-prefix-input').addEventListener('input', () => {
-    const val = document.getElementById('global-prefix-input').value || '!';
-    document.getElementById('global-prefix-badge').textContent = val;
-    document.getElementById('alias-prefix-preview').textContent = val;
-  });
-
-  // Save global prefix
-  document.getElementById('btn-save-global-prefix').addEventListener('click', async () => {
-    const prefix = document.getElementById('global-prefix-input').value.trim();
-    if (!prefix || !activeGuildId) return;
-    try {
-      const res = await fetch(`/api/guilds/${activeGuildId}/prefix/global`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefix })
-      });
-      const data = await res.json();
-      if (data.success) {
-        prefixData.globalPrefix = prefix;
-        document.getElementById('current-global-prefix').textContent = prefix;
-        document.getElementById('global-prefix-badge').textContent = prefix;
-        document.getElementById('alias-prefix-preview').textContent = prefix;
-        showAliasStatus(`✅ Đã lưu prefix tổng: "${prefix}"`);
-        renderAliasList(); // re-render to update example column
-      } else {
-        showAliasStatus('❌ ' + (data.error || 'Lỗi'), true);
+  // 10. Toggle Maintenance Mode
+  const maintenanceBtn = document.getElementById('btn-maintenance');
+  if (maintenanceBtn) {
+    maintenanceBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/owner/maintenance', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          loadStats();
+          showToast(`Chế độ bảo trì đã ${data.maintenanceMode ? 'BẬT' : 'TẮT'}.`, 'success');
+        } else {
+          showToast(`Lỗi: ${data.error || 'Quyền hạn bị từ chối'}`, 'error');
+        }
+      } catch {
+        showToast('Không thể kết nối đến server.', 'error');
       }
-    } catch { showAliasStatus('❌ Lỗi kết nối.', true); }
-  });
+    });
+  }
 
-  // Command select → populate subcommand select
-  document.getElementById('new-alias-command').addEventListener('change', (e) => {
-    const selected = e.target.options[e.target.selectedIndex];
-    const subcmdSelect = document.getElementById('new-alias-subcommand');
-    subcmdSelect.innerHTML = '<option value="">-- Không có --</option>';
-
-    if (!selected.value) {
-      subcmdSelect.disabled = true;
-      return;
-    }
-    const subs = JSON.parse(selected.dataset.subcommands || '[]');
-    if (subs.length > 0) {
-      subs.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s;
-        opt.textContent = s;
-        subcmdSelect.appendChild(opt);
-      });
-      subcmdSelect.disabled = false;
-    } else {
-      subcmdSelect.disabled = true;
-    }
-  });
-
-  // Add alias
-  document.getElementById('btn-add-alias').addEventListener('click', async () => {
-    const alias = document.getElementById('new-alias-text').value.trim().toLowerCase().replace(/\s+/g, '');
-    const command = document.getElementById('new-alias-command').value;
-    const subcommand = document.getElementById('new-alias-subcommand').value;
-
-    if (!alias) { showAliasStatus('❌ Nhập tên alias.', true); return; }
-    if (!command) { showAliasStatus('❌ Chọn lệnh slash.', true); return; }
-    if (!activeGuildId) { showAliasStatus('❌ Chưa chọn server.', true); return; }
-
+  // 11. Prefix Settings & Live Preview
+  async function loadPrefixSettings(guildId) {
     try {
-      const res = await fetch(`/api/guilds/${activeGuildId}/prefix/alias`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alias, command, subcommand: subcommand || undefined })
-      });
+      const res = await fetch(`/api/guilds/${guildId}/prefix`);
+      if (!res.ok) return;
       const data = await res.json();
-      if (data.success) {
-        prefixData.aliases[alias] = { command, ...(subcommand ? { subcommand } : {}) };
-        renderAliasList();
-        showAliasStatus(`✅ Đã thêm: ${prefixData.globalPrefix}${alias} → /${command}${subcommand ? ' ' + subcommand : ''}`);
-        document.getElementById('new-alias-text').value = '';
-        document.getElementById('new-alias-command').value = '';
-        document.getElementById('new-alias-subcommand').innerHTML = '<option value="">-- Không có --</option>';
-        document.getElementById('new-alias-subcommand').disabled = true;
-      } else {
-        showAliasStatus('❌ ' + (data.error || 'Lỗi'), true);
+      const prefixInput = document.getElementById('prefix-input');
+      if (prefixInput) {
+        prefixInput.value = data.globalPrefix || 'kn';
+        updatePrefixPreview(prefixInput.value);
       }
-    } catch { showAliasStatus('❌ Lỗi kết nối.', true); }
-  });
+    } catch {}
+  }
 
-  // 12. IMAGE UPLOAD CDN HELPER ───────────────────────────────────────────────
+  function updatePrefixPreview(val) {
+    const pTag = document.getElementById('preview-prefix-tag');
+    const pEx = document.getElementById('preview-cmd-example');
+    if (pTag) pTag.innerText = val || 'kn';
+    if (pEx) pEx.innerText = val || 'kn';
+  }
 
+  const prefixInput = document.getElementById('prefix-input');
+  if (prefixInput) {
+    prefixInput.addEventListener('input', (e) => {
+      updatePrefixPreview(e.target.value);
+    });
+  }
+
+  const savePrefixBtn = document.getElementById('btn-save-prefix');
+  if (savePrefixBtn) {
+    savePrefixBtn.addEventListener('click', async () => {
+      const prefix = document.getElementById('prefix-input').value.trim();
+      if (!prefix || !activeGuildId) return;
+      try {
+        const res = await fetch(`/api/guilds/${activeGuildId}/prefix/global`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prefix })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Đã lưu Prefix mới: ${prefix}`, 'success');
+        } else {
+          showToast(`Lỗi: ${data.error}`, 'error');
+        }
+      } catch {
+        showToast('Lỗi kết nối mạng khi lưu Prefix.', 'error');
+      }
+    });
+  }
+
+  // 12. Discord CDN Image Upload Helper Widget
   const fileInput = document.getElementById('upload-image-file');
   const triggerBtn = document.getElementById('btn-trigger-upload');
   const urlInput = document.getElementById('uploaded-image-url');
   const copyBtn = document.getElementById('btn-copy-uploaded-url');
   const uploadStatus = document.getElementById('upload-status-msg');
 
-  triggerBtn.addEventListener('click', () => {
-    fileInput.click();
-  });
+  if (triggerBtn && fileInput) {
+    triggerBtn.addEventListener('click', () => fileInput.click());
 
-  fileInput.addEventListener('change', async () => {
-    if (!fileInput.files.length) return;
-    const file = fileInput.files[0];
+    fileInput.addEventListener('change', async () => {
+      if (!fileInput.files.length) return;
+      const file = fileInput.files[0];
 
-    // Reset status and inputs
-    uploadStatus.innerText = '🔄 Đang tải ảnh lên Discord CDN...';
-    uploadStatus.className = 'status-msg';
-    urlInput.value = '';
-    copyBtn.disabled = true;
-    triggerBtn.disabled = true;
+      uploadStatus.innerText = '🔄 Đang tải ảnh lên Discord CDN...';
+      uploadStatus.className = 'status-msg';
+      urlInput.value = '';
+      copyBtn.disabled = true;
+      triggerBtn.disabled = true;
 
-    const formData = new FormData();
-    formData.append('file', file);
+      const formData = new FormData();
+      formData.append('file', file);
 
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        urlInput.value = data.url;
-        copyBtn.disabled = false;
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+          urlInput.value = data.url;
+          copyBtn.disabled = false;
+          triggerBtn.disabled = false;
+          uploadStatus.innerText = '✅ Tải ảnh thành công!';
+          uploadStatus.className = 'status-msg success';
+          showToast('Đã tải ảnh lên Discord CDN thành công!', 'success');
+        } else {
+          triggerBtn.disabled = false;
+          uploadStatus.innerText = `❌ Lỗi: ${data.error || 'Không rõ nguyên nhân'}`;
+          uploadStatus.className = 'status-msg error';
+          showToast(`Lỗi: ${data.error}`, 'error');
+        }
+      } catch {
         triggerBtn.disabled = false;
-        uploadStatus.innerText = '✅ Tải ảnh thành công!';
-        uploadStatus.className = 'status-msg ok';
-      } else {
-        triggerBtn.disabled = false;
-        uploadStatus.innerText = `❌ Lỗi: ${data.error || 'Không rõ nguyên nhân'}`;
-        uploadStatus.className = 'status-msg err';
+        uploadStatus.innerText = '❌ Lỗi kết nối mạng khi tải ảnh.';
+        uploadStatus.className = 'status-msg error';
+        showToast('Lỗi kết nối mạng.', 'error');
       }
-    } catch {
-      triggerBtn.disabled = false;
-      uploadStatus.innerText = '❌ Lỗi kết nối mạng khi tải ảnh.';
-      uploadStatus.className = 'status-msg err';
-    }
-  });
-
-  copyBtn.addEventListener('click', () => {
-    urlInput.select();
-    urlInput.setSelectionRange(0, 99999); // for mobile devices
-    navigator.clipboard.writeText(urlInput.value);
-
-    const originalText = copyBtn.innerText;
-    copyBtn.innerText = 'Copied!';
-    setTimeout(() => {
-      copyBtn.innerText = originalText;
-    }, 2000);
-  });
-
-  // ── 13. PERMISSIONS TAB LOGIC ──────────────────────────────────────────────
-  let guildRoles = [];
-  let allCommandsMap = {}; // moduleName -> [commandPaths]
-  let commandPermissions = {}; // targetKey -> { allowedRoles: [], deniedRoles: [] }
-  let activePermissionKey = null;
-
-  async function loadPermissionsSettings(guildId) {
-    const moduleSelect = document.getElementById('perm-module-select');
-    const commandSelect = document.getElementById('perm-command-select');
-    
-    moduleSelect.innerHTML = '<option value="">-- Đang tải... --</option>';
-    commandSelect.innerHTML = '<option value="">-- Tất cả lệnh trong Module --</option>';
-    commandSelect.disabled = true;
-    document.getElementById('permission-settings-area').style.display = 'none';
-
-    try {
-      // 1. Fetch roles
-      const rolesRes = await fetch(`/api/guilds/${guildId}/roles`);
-      guildRoles = await rolesRes.json();
-
-      // 2. Fetch commands map
-      const cmdsRes = await fetch(`/api/guilds/${guildId}/commands`);
-      allCommandsMap = await cmdsRes.json();
-
-      // 3. Fetch current permissions
-      const permsRes = await fetch(`/api/guilds/${guildId}/permissions`);
-      commandPermissions = await permsRes.json();
-
-      // 4. Fetch module names
-      const modulesRes = await fetch(`/api/guilds/${guildId}/modules`);
-      const modules = await modulesRes.json();
-
-      // Populate module dropdown
-      moduleSelect.innerHTML = '<option value="">-- Chọn Module --</option>';
-      modules.forEach(mod => {
-        const opt = document.createElement('option');
-        opt.value = mod.name;
-        opt.textContent = mod.displayName || mod.name;
-        moduleSelect.appendChild(opt);
-      });
-    } catch (err) {
-      console.error(err);
-      moduleSelect.innerHTML = '<option value="">-- Lỗi tải dữ liệu --</option>';
-    }
-  }
-
-  // Handle module selection change
-  const permModSelect = document.getElementById('perm-module-select');
-  const permCmdSelect = document.getElementById('perm-command-select');
-
-  permModSelect.addEventListener('change', () => {
-    const moduleName = permModSelect.value;
-    permCmdSelect.innerHTML = '<option value="">-- Tất cả lệnh trong Module --</option>';
-    
-    if (!moduleName) {
-      permCmdSelect.disabled = true;
-      document.getElementById('permission-settings-area').style.display = 'none';
-      activePermissionKey = null;
-      return;
-    }
-
-    // Populate command dropdown
-    const cmds = allCommandsMap[moduleName] || [];
-    cmds.forEach(cmd => {
-      const opt = document.createElement('option');
-      opt.value = cmd;
-      opt.textContent = `/${cmd}`;
-      permCmdSelect.appendChild(opt);
-    });
-    
-    permCmdSelect.disabled = false;
-
-    // By default, configure permissions for the entire module
-    activePermissionKey = `module:${moduleName}`;
-    document.getElementById('perm-editing-command-name').textContent = `Module: ${moduleName.toUpperCase()}`;
-    
-    renderPermissionsRolesPickers(activePermissionKey);
-    document.getElementById('permission-settings-area').style.display = 'block';
-  });
-
-  // Handle command selection change
-  permCmdSelect.addEventListener('change', () => {
-    const commandName = permCmdSelect.value;
-    const moduleName = permModSelect.value;
-
-    if (!commandName) {
-      // Fallback to module-level settings
-      activePermissionKey = `module:${moduleName}`;
-      document.getElementById('perm-editing-command-name').textContent = `Module: ${moduleName.toUpperCase()}`;
-    } else {
-      activePermissionKey = commandName;
-      document.getElementById('perm-editing-command-name').textContent = `Lệnh: /${commandName}`;
-    }
-
-    renderPermissionsRolesPickers(activePermissionKey);
-  });
-
-  function renderPermissionsRolesPickers(commandName) {
-    const rules = commandPermissions[commandName] || { allowedRoles: [], deniedRoles: [] };
-    const allowedList = document.getElementById('allowed-roles-list');
-    const deniedList = document.getElementById('denied-roles-list');
-
-    allowedList.innerHTML = '';
-    deniedList.innerHTML = '';
-
-    if (guildRoles.length === 0) {
-      allowedList.innerHTML = '<p class="placeholder-text">Không tìm thấy vai trò nào.</p>';
-      deniedList.innerHTML = '<p class="placeholder-text">Không tìm thấy vai trò nào.</p>';
-      return;
-    }
-
-    guildRoles.forEach(role => {
-      // Color dot markup
-      const dotHtml = role.color ? `<span class="role-color-dot" style="color: ${role.color}; background-color: ${role.color};"></span>` : '';
-
-      // 1. Allowed roles checkbox
-      const isAllowed = rules.allowedRoles?.includes(role.id) || false;
-      const allowedItem = document.createElement('label');
-      allowedItem.className = 'role-checkbox-item';
-      allowedItem.innerHTML = `
-        <input type="checkbox" data-role-id="${role.id}" class="allowed-checkbox" ${isAllowed ? 'checked' : ''} />
-        <span class="role-checkbox-label">
-          ${dotHtml}
-          ${role.name}
-        </span>
-      `;
-      allowedList.appendChild(allowedItem);
-
-      // 2. Denied roles checkbox
-      const isDenied = rules.deniedRoles?.includes(role.id) || false;
-      const deniedItem = document.createElement('label');
-      deniedItem.className = 'role-checkbox-item';
-      deniedItem.innerHTML = `
-        <input type="checkbox" data-role-id="${role.id}" class="denied-checkbox" ${isDenied ? 'checked' : ''} />
-        <span class="role-checkbox-label">
-          ${dotHtml}
-          ${role.name}
-        </span>
-      `;
-      deniedList.appendChild(deniedItem);
-
-      // Mutual exclusion check: ticking Allowed should untick Denied, and vice versa!
-      allowedItem.querySelector('input').addEventListener('change', (e) => {
-        if (e.target.checked) {
-          deniedItem.querySelector('input').checked = false;
-        }
-      });
-      deniedItem.querySelector('input').addEventListener('change', (e) => {
-        if (e.target.checked) {
-          allowedItem.querySelector('input').checked = false;
-        }
-      });
     });
   }
 
-  // Handle save permissions
-  document.getElementById('btn-save-permissions').addEventListener('click', async () => {
-    const commandName = activePermissionKey;
-    if (!commandName || !activeGuildId) return;
-
-    const saveBtn = document.getElementById('btn-save-permissions');
-    const msgSpan = document.getElementById('permissions-status-msg');
-
-    saveBtn.disabled = true;
-    msgSpan.textContent = '🔄 Đang lưu cấu hình quyền...';
-    msgSpan.className = 'status-msg';
-
-    // Build the lists of checked roles
-    const allowedRoles = [];
-    document.querySelectorAll('.allowed-checkbox').forEach(cb => {
-      if (cb.checked) allowedRoles.push(cb.dataset.roleId);
+  if (copyBtn && urlInput) {
+    copyBtn.addEventListener('click', () => {
+      urlInput.select();
+      navigator.clipboard.writeText(urlInput.value);
+      showToast('Đã copy Link ảnh Discord CDN vào bộ nhớ tạm!', 'success');
     });
-
-    const deniedRoles = [];
-    document.querySelectorAll('.denied-checkbox').forEach(cb => {
-      if (cb.checked) deniedRoles.push(cb.dataset.roleId);
-    });
-
-    // Update local object copy
-    commandPermissions[commandName] = { allowedRoles, deniedRoles };
-
-    try {
-      const res = await fetch(`/api/guilds/${activeGuildId}/permissions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permissions: commandPermissions })
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        msgSpan.textContent = '✅ Đã lưu cấu hình quyền thành công!';
-        msgSpan.className = 'status-msg ok';
-      } else {
-        msgSpan.textContent = `❌ Lỗi: ${data.error || 'Không rõ nguyên nhân'}`;
-        msgSpan.className = 'status-msg err';
-      }
-    } catch (err) {
-      msgSpan.textContent = '❌ Lỗi kết nối mạng.';
-      msgSpan.className = 'status-msg err';
-    } finally {
-      saveBtn.disabled = false;
-      setTimeout(() => {
-        msgSpan.textContent = '';
-        msgSpan.className = 'status-msg';
-      }, 4000);
-    }
-  });
+  }
 });
